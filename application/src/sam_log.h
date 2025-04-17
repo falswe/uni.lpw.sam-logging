@@ -40,20 +40,17 @@ enum sam_log_status {
 // Indicate if corresponding field is potentially PRESENT in FINAL bit-packed OUTPUT stream.
 
 /** @brief Bit in 'hdr': Indicates slot_idx is potentially present in the output stream. */
-#define SAM_LOG_HDR_MASK_SLOT_IDX (1 << 0)  // = 0x01
+#define SAM_LOG_HDR_SLOT_IDX (1)  // = 0x01
 /** @brief Bit in 'hdr': Indicates slots_to_use is potentially present in the output stream. */
-#define SAM_LOG_HDR_MASK_SLOTS_TO_USE (1 << 1)  // = 0x02
+#define SAM_LOG_HDR_SLOTS_TO_USE (1<<1)  // = 0x02
 /** @brief Bit in 'hdr': Indicates slot_idx_diff is potentially present in the output stream. */
-#define SAM_LOG_HDR_MASK_SLOT_IDX_DIFF (1 << 2)  // = 0x04
+#define SAM_LOG_HDR_SLOT_IDX_DIFF (1<<2)  // = 0x04
 /** @brief Bit in 'hdr': Indicates related scan information is relevant (meaning TBD). */
-#define SAM_LOG_HDR_MASK_SCAN (1 << 3)  // = 0x08
-/** @brief Bit in 'hdr': Indicates sync success info is relevant (meaning TBD). */
-#define SAM_LOG_HDR_MASK_SYNC_SUCCESS (1 << 4)  // = 0x10
-/** @brief Bit in 'hdr': If set, the slots_to_use value becomes the new default for the encoder. */
-#define SAM_LOG_HDR_MASK_SET_DEFAULT_SLOTS (1 << 5)  // = 0x20
+#define SAM_LOG_HDR_SCAN (1<<3)  // = 0x08, RX action w/ unlimited timeout
 /** @brief Bit in 'hdr': Indicates custom fields are potentially present in the output stream. */
-#define SAM_LOG_HDR_MASK_CUSTOM_FIELDS (1 << 6)  // = 0x40
-// Bit 7 (0x80) is currently unused/reserved.
+#define SAM_LOG_HDR_CUSTOM_FIELDS (1<<4)  // = 0x10
+/** @brief Bit in 'hdr': If set, the slots_to_use value becomes the new default for the encoder. */
+#define SAM_LOG_HDR_DEFAULT_SLOTS_TO_USE (1<<5)  // = 0x20
 
 // --- Default Values (for Encoder Logic) ---
 
@@ -75,10 +72,10 @@ enum sam_log_status {
  * @brief Structure for storing log entry metadata in the primary ring buffer.
  * Uses packed attribute to minimize padding.
  */
-struct sam_log_rb_entry {
+struct sam_log_action {
     uint8_t status;             // See enum sam_log_status
     uint16_t custom_status;     // Custom code, only relevant if status == SAM_LOG_STATUS_CUSTOM
-    uint8_t hdr;                // Header flags (SAM_LOG_HDR_MASK_*)
+    uint8_t hdr;                // Header flags (SAM_LOG_HDR_*)
     uint32_t slot_idx;          // Slot index of action
     int16_t slot_idx_diff;      // Signed difference from expected slot
     uint8_t slots_to_use;       // Slots used by this action
@@ -90,12 +87,13 @@ struct sam_log_rb_entry {
 /**
  * @brief Initializes the SAM logging subsystem (ring buffers).
  *
+ * @param log_name Name identifier for this logging instance.
  * @return 0 on success, negative errno code on failure.
  */
-int sam_log_init(void);
+int sam_log_init(const char *log_name);
 
 /**
- * @brief Logs an action's result and associated metadata.
+ * @brief Logs an action and associated metadata.
  *
  * This function prepares the log entry structure and attempts to add it
  * (along with any custom data) to the appropriate ring buffers.
@@ -114,19 +112,18 @@ int sam_log_init(void);
  *
  * @return 0 on success, negative errno code on failure (e.g., -ENOSPC if buffer full).
  */
-int sam_log_action_result(enum sam_log_status status, uint16_t custom_status, uint32_t slot_idx,
+int sam_log_action_put(enum sam_log_status status, uint16_t custom_status, uint32_t slot_idx,
                           int16_t slot_idx_diff, uint8_t slots_to_use, bool set_default_slots,
                           const void *custom_data, uint16_t custom_data_len);
 
 /**
  * @brief Reads logged data and outputs it in the final serialized format.
  *
- * @param output_buffer Pointer to the buffer where the serialized data will be written.
  * @param buffer_size   The maximum size of the output buffer.
- * @param[out] bytes_written Pointer to store the actual number of bytes written to output_buffer.
+ * @param[out] bytes_written Pointer to store the actual number of bytes written to output buffer.
  *
  * @return 0 on success, negative errno code on failure.
  */
-int sam_log_flush_and_encode(uint8_t *output_buffer, size_t buffer_size, size_t *bytes_written);
+int sam_log_flush(size_t buffer_size, size_t *bytes_written);
 
 #endif  // SAM_LOG_H_
