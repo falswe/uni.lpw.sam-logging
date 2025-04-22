@@ -1,31 +1,31 @@
 manifest:
   remotes:
-    # - name: zephyrproject-rtos
-    #   url-base: https://github.com/zephyrproject-rtos
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
     - name: zephyrproject-rtos-ncs
       url-base: https://github.com/nrfconnect
-    # - name: d3s
-    #   url-base: ssh://git@d3s.disi.unitn.it
-    # - name: github-d3s
-    #   url-base: git@github.com:d3s-trento
+    - name: d3s
+      url-base: ssh://git@d3s.disi.unitn.it
+    - name: github-d3s
+      url-base: git@github.com:d3s-trento
   projects:
     - name: sdk-zephyr
       path: zephyr
       remote: zephyrproject-rtos-ncs
       revision: 0bc3393fb112ec80ebeab48cd023d69b1e9db757
       import: true
-    # - name: zephyr-dw3xxx
-    #   remote: github-d3s
-    #   revision: tmp_z3.6.99
-    # - name: zephyr-dwm3001cdk
-    #   remote: github-d3s
-    #   revision: tmp_z3.6.99
-    # - name: sam-core
-    #   remote: github-d3s
-    #   revision: master
-    # - name: sam-dw3000
-    #   remote: github-d3s
-    #   revision: master
-    # - name: sam-dwm3001cdk
-    #   remote: github-d3s
-    #   revision: master
+    - name: zephyr-dw3xxx
+      remote: github-d3s
+      revision: tmp_z3.6.99
+    - name: zephyr-dwm3001cdk
+      remote: github-d3s
+      revision: tmp_z3.6.99
+    - name: sam-core
+      remote: github-d3s
+      revision: master
+    - name: sam-dw3000
+      remote: github-d3s
+      revision: master
+    - name: sam-dwm3001cdk
+      remote: github-d3s
+      revision: master
