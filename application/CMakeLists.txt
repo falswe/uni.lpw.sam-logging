@@ -27,16 +27,20 @@ project(multi-ranging)
 #file(GLOB SAM_DWM3001CDK_SOURCES "src/sam_dwm3001cdk/*.c")
 
 # Application
+target_include_directories(app PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../z85/src
+)
 target_sources(app PRIVATE
- #  ${SAM_SOURCES}
- #  ${SAM_DW3000_SOURCES}
- #  ${SAM_DWM3001CDK_SOURCES}
-   src/main.c
+    # ${SAM_SOURCES}
+    # ${SAM_DW3000_SOURCES}
+    # ${SAM_DWM3001CDK_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/main.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../z85/src/z85.c
 )
 
-#add_custom_command(
-#	TARGET app
-#	POST_BUILD
-#	COMMAND ${PROJECT_SOURCE_DIR}/convert_compile_commands.sh "${CMAKE_CURRENT_BINARY_DIR}/compile_commands.json" "${PROJECT_SOURCE_DIR}/compile_commands.json"
-#)
+add_custom_command(
+    TARGET app
+    POST_BUILD
+    COMMAND ${PROJECT_SOURCE_DIR}/convert_compile_commands.sh "${CMAKE_CURRENT_BINARY_DIR}/compile_commands.json" "${PROJECT_SOURCE_DIR}/compile_commands.json"
+)
 

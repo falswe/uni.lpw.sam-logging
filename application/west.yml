@@ -8,6 +8,8 @@ manifest:
       url-base: ssh://git@d3s.disi.unitn.it
     - name: github-d3s
       url-base: git@github.com:d3s-trento
+    - name: artemkin
+      url-base: git@github.com:artemkin
   projects:
     - name: sdk-zephyr
       path: zephyr
@@ -29,3 +31,7 @@ manifest:
     - name: sam-dwm3001cdk
       remote: github-d3s
       revision: master
+    - name: z85
+      remote: artemkin
+      revision: master
+
