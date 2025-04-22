@@ -1,0 +1,16 @@
+bootloader/
+build/
+modules/
+tools/
+.west/
+zephyr/
+application/build/
+.envrc
+.vscode/
+*.code-workspace
+.west_installation/
+zephyr-dw3xxx-dev/
+zephyr-dwm3001cdk/
+
+*.json
+
