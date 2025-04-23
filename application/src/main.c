@@ -24,7 +24,8 @@ static void test_init(void) {
     }
 
     sam_log_get_stats(&stats);
-    LOG_INF("After init - logged: %u, dropped: %u", stats.actions_logged, stats.actions_dropped);
+    LOG_INF("After init - logged: %u (custom %u), dropped: %u (custom %u)", stats.actions_logged,
+            stats.custom_fields_logged, stats.actions_dropped, stats.custom_fields_dropped);
 
     LOG_INF("Initialization test complete");
 }
@@ -51,13 +52,17 @@ static void test_basic_logging(void) {
 
     /* Get statistics */
     sam_log_get_stats(&stats);
-    LOG_INF("After basic logging - logged: %u, dropped: %u", stats.actions_logged,
-            stats.actions_dropped);
+    LOG_INF("After basic logging - logged: %u (custom %u), dropped: %u (custom %u)",
+            stats.actions_logged, stats.custom_fields_logged, stats.actions_dropped,
+            stats.custom_fields_dropped);
 
     /* Flush logs */
-    ret = sam_log_flush("BASIC", 0, &bytes_written);
+    ret = sam_log_flush("BASIC", 100, &bytes_written);
     if (ret != 0) {
+        // This should not happen now unless there's another error
         LOG_ERR("Failed to flush logs: %d", ret);
+    } else {
+        LOG_INF("Flush successful (bytes_written not indicative of encoded size in current impl)");
     }
 
     LOG_INF("Basic logging test complete");
@@ -94,15 +99,18 @@ static void test_custom_data(void) {
         LOG_ERR("Failed to log with large custom data: %d", ret);
     }
 
-    /* Get statistics */
+    /* Get statistics (Note: stats reset after previous flush) */
     sam_log_get_stats(&stats);
-    LOG_INF("After custom data - logged: %u, custom: %u", stats.actions_logged,
-            stats.custom_fields_logged);
+    LOG_INF("After custom data - logged: %u (custom %u), dropped: %u (custom %u)",
+            stats.actions_logged, stats.custom_fields_logged, stats.actions_dropped,
+            stats.custom_fields_dropped);
 
     /* Flush logs */
-    ret = sam_log_flush("CUSTOM", 0, &bytes_written);
+    ret = sam_log_flush("CUSTOM", 100, &bytes_written);
     if (ret != 0) {
         LOG_ERR("Failed to flush logs: %d", ret);
+    } else {
+        LOG_INF("Flush successful");
     }
 
     LOG_INF("Custom data test complete");
@@ -112,6 +120,7 @@ static void test_custom_data(void) {
 static void test_all_fields(void) {
     int ret;
     size_t bytes_written;
+    struct sam_log_stats stats;
 
     LOG_INF("Testing all fields");
 
@@ -127,10 +136,18 @@ static void test_all_fields(void) {
         LOG_ERR("Failed to log with custom status: %d", ret);
     }
 
+    /* Get statistics (Note: stats reset after previous flush) */
+    sam_log_get_stats(&stats);
+    LOG_INF("After all fields - logged: %u (custom %u), dropped: %u (custom %u)",
+            stats.actions_logged, stats.custom_fields_logged, stats.actions_dropped,
+            stats.custom_fields_dropped);
+
     /* Flush logs */
-    ret = sam_log_flush("ALLFIELDS", 0, &bytes_written);
+    ret = sam_log_flush("ALLFIELDS", 100, &bytes_written);
     if (ret != 0) {
         LOG_ERR("Failed to flush logs: %d", ret);
+    } else {
+        LOG_INF("Flush successful");
     }
 
     LOG_INF("All fields test complete");
@@ -144,26 +161,32 @@ static void test_buffer_overflow(void) {
 
     LOG_INF("Testing buffer overflow");
 
-    /* Reset stats */
+    /* Reset stats and clear buffers */
     sam_log_init();
 
     /* Log many actions to overflow the buffer */
     for (int i = 0; i < 200; i++) {
+        // Log with custom data to also test custom buffer overflow
         ret = sam_log_action(SAM_LOG_RX_SUCCESS, 0, 300 + i, 0, 1, false, custom_data_buffer, 32);
-        if (ret != 0 && i < 50) {
-            LOG_ERR("Failed to log action during overflow test: %d", ret);
+        // Only log error for the first few, as many errors are expected
+        if (ret != 0 && i < 5) {
+            LOG_ERR("Early failure in overflow test loop: %d", ret);
         }
     }
 
     /* Get statistics */
     sam_log_get_stats(&stats);
-    LOG_INF("After overflow - logged: %u, dropped: %u", stats.actions_logged,
-            stats.actions_dropped);
+    LOG_INF("After overflow - logged: %u (custom %u), dropped: %u (custom %u)",
+            stats.actions_logged, stats.custom_fields_logged, stats.actions_dropped,
+            stats.custom_fields_dropped);
 
     /* Flush logs */
-    ret = sam_log_flush("OVERFLOW", 0, &bytes_written);
+    // This will print the START and END buffer contents
+    ret = sam_log_flush("OVERFLOW", 100, &bytes_written);
     if (ret != 0) {
         LOG_ERR("Failed to flush logs: %d", ret);
+    } else {
+        LOG_INF("Flush successful");
     }
 
     LOG_INF("Buffer overflow test complete");
@@ -173,6 +196,7 @@ static void test_buffer_overflow(void) {
 static void test_all_statuses(void) {
     int ret;
     size_t bytes_written;
+    struct sam_log_stats stats;
 
     LOG_INF("Testing all status values");
 
@@ -192,12 +216,20 @@ static void test_all_statuses(void) {
     sam_log_action_status(SAM_LOG_SKIP_SUCCESS);
     sam_log_action_status(SAM_LOG_RESTART_LATE);
     sam_log_action_status(SAM_LOG_RESTART_FAIL);
-    sam_log_action_status(SAM_LOG_UNKNOWN);
+    sam_log_action_status(SAM_LOG_UNKNOWN);  // Will use custom_status=0
+
+    /* Get statistics (Note: stats reset after previous flush) */
+    sam_log_get_stats(&stats);
+    LOG_INF("After all statuses - logged: %u (custom %u), dropped: %u (custom %u)",
+            stats.actions_logged, stats.custom_fields_logged, stats.actions_dropped,
+            stats.custom_fields_dropped);
 
     /* Flush logs */
-    ret = sam_log_flush("STATUSES", 0, &bytes_written);
+    ret = sam_log_flush("STATUSES", 100, &bytes_written);
     if (ret != 0) {
         LOG_ERR("Failed to flush logs: %d", ret);
+    } else {
+        LOG_INF("Flush successful");
     }
 
     LOG_INF("All statuses test complete");
@@ -209,6 +241,7 @@ static void test_simulate_epoch(void) {
     size_t bytes_written;
     uint32_t base_slot = 1000;
     uint8_t custom_data[4] = {0xDE, 0xAD, 0xBE, 0xEF};
+    struct sam_log_stats stats;
 
     LOG_INF("Simulating epoch sequence");
 
@@ -223,28 +256,37 @@ static void test_simulate_epoch(void) {
                    sizeof(custom_data));
 
     /* TX with larger slot use */
-    sam_log_action(SAM_LOG_TX_DONE, 0, base_slot + 3, 0, 2, true, NULL, 0);
+    sam_log_action(SAM_LOG_TX_DONE, 0, base_slot + 3, 0, 2, true, NULL,
+                   0);  // Set default slots = 2
 
     /* Sync */
-    sam_log_action(SAM_LOG_SYNCH_DONE, 0, base_slot + 10, 0, 1, false, NULL, 0);
+    sam_log_action(SAM_LOG_SYNCH_DONE, 0, base_slot + 10, 0, 1, false, NULL, 0);  // Uses 1 slot
 
     /* Skip slots */
     sam_log_action(SAM_LOG_SKIP_SUCCESS, 0, base_slot + 11, 0, 5, false, NULL, 0);
 
-    /* RX timeout */
+    /* RX timeout (will use default slots = 2) */
     sam_log_action_status(SAM_LOG_RX_TIMEOUT);
 
     /* TX late */
-    sam_log_action(SAM_LOG_TX_SCHED_LATE, 0, base_slot + 17, 2, 1, false, NULL, 0);
+    sam_log_action(SAM_LOG_TX_SCHED_LATE, 0, base_slot + 17, 2, 1, false, NULL, 0);  // Use 1 slot
 
     /* End sync */
     sam_log_action(SAM_LOG_SYNCH_FAIL, 0, base_slot + 20, -1, 1, false, custom_data,
                    sizeof(custom_data));
 
+    /* Get statistics */
+    sam_log_get_stats(&stats);
+    LOG_INF("After epoch simulation - logged: %u (custom %u), dropped: %u (custom %u)",
+            stats.actions_logged, stats.custom_fields_logged, stats.actions_dropped,
+            stats.custom_fields_dropped);
+
     /* Flush logs */
-    ret = sam_log_flush("EPOCH", 0, &bytes_written);
+    ret = sam_log_flush("EPOCH", 100, &bytes_written);
     if (ret != 0) {
         LOG_ERR("Failed to flush logs: %d", ret);
+    } else {
+        LOG_INF("Flush successful");
     }
 
     LOG_INF("Epoch simulation complete");
@@ -253,9 +295,14 @@ static void test_simulate_epoch(void) {
 int main(void) {
     LOG_INF("SAM Logging Test Application");
 
+    /* Initialize custom data buffer once */
+    for (int i = 0; i < sizeof(custom_data_buffer); i++) {
+        custom_data_buffer[i] = i & 0xFF;
+    }
+
     /* Run all tests */
     test_init();
-    k_sleep(K_MSEC(100));
+    k_sleep(K_MSEC(100));  // Allow time for logs to potentially process
 
     test_basic_logging();
     k_sleep(K_MSEC(100));
@@ -276,10 +323,6 @@ int main(void) {
     k_sleep(K_MSEC(100));
 
     LOG_INF("All tests complete");
-
-    while (1) {
-        k_sleep(K_SECONDS(1));
-    }
 
     return 0;
 }
