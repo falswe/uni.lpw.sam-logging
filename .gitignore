@@ -14,3 +14,4 @@ zephyr-dwm3001cdk/
 
 *.json
 
+.cache/
