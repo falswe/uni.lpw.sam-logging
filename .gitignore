@@ -11,6 +11,11 @@ application/build/
 .west_installation/
 zephyr-dw3xxx-dev/
 zephyr-dwm3001cdk/
+zephyr-dw3xxx/
+sam-dwm3001cdk/
+sam-dw3000/
+sam-core/
+z85/
 
 *.json
 
