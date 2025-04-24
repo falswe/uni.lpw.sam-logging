@@ -283,58 +283,98 @@ int sam_log_get_stats(struct sam_log_stats *stats) {
 }
 
 /* Function to flush logs and encode them */
-int sam_log_flush(char *log_name, size_t buffer_size, size_t *bytes_written) {
-    uint8_t *data;
-    uint32_t length;
-    char encoded[SAM_LOG_SERIALIZE_BUF_SIZE * 5 / 4 +
-                 10]; /* Z85 encoding needs 5/4 the original size + padding */
+int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
+    uint8_t *action_data, *custom_data;
+    uint32_t action_length, custom_length;
+    char encoded[SAM_LOG_SERIALIZE_BUF_SIZE * 5 / 4 + 10]; /* Z85 encoding overhead + padding */
     size_t encoded_len;
+    size_t serialize_pos = 0;
 
-    if (!log_name || !bytes_written || buffer_size < 10) {
+    if (!log_name) {
         return -EINVAL;
     }
 
-    /* Reset output */
-    *bytes_written = 0;
-
-    /* Get data from the start buffer */
-    length = ring_buf_get_claim(&log_ctx.start_actions, &data, UINT32_MAX);
-    if (length > 0) {
-        /* Copy data to serialize buffer */
-        if (length > sizeof(serialize_buf)) {
-            length = sizeof(serialize_buf);
-        }
-        memcpy(serialize_buf, data, length);
-
-        /* Encode using Z85 */
-        encoded_len = Z85_encode_with_padding((char *)serialize_buf, encoded, length);
-        if (encoded_len > 0) {
-            /* Print the log */
-            LOG_INF("LOG[%s] START %s", log_name, encoded);
-        }
-
-        /* Free the claimed data */
-        ring_buf_get_finish(&log_ctx.start_actions, length);
+    /* Reset output if bytes_written is provided */
+    if (bytes_written) {
+        *bytes_written = 0;
     }
 
-    /* Get data from the end buffer */
-    length = ring_buf_get_claim(&log_ctx.end_actions, &data, UINT32_MAX);
-    if (length > 0) {
-        /* Copy data to serialize buffer */
-        if (length > sizeof(serialize_buf)) {
-            length = sizeof(serialize_buf);
+    /* Process START buffer */
+    action_length = ring_buf_get_claim(&log_ctx.start_actions, &action_data, UINT32_MAX);
+    if (action_length > 0) {
+        /* Copy actions to serialize buffer */
+        memset(serialize_buf, 0, sizeof(serialize_buf));
+        if (action_length > sizeof(serialize_buf)) {
+            action_length = sizeof(serialize_buf);
         }
-        memcpy(serialize_buf, data, length);
+        memcpy(serialize_buf, action_data, action_length);
+        serialize_pos = action_length;
+
+        /* Get and append custom data */
+        custom_length = ring_buf_get_claim(&log_ctx.start_custom, &custom_data, UINT32_MAX);
+        if (custom_length > 0) {
+            if (serialize_pos + custom_length <= sizeof(serialize_buf)) {
+                memcpy(serialize_buf + serialize_pos, custom_data, custom_length);
+                serialize_pos += custom_length;
+                ring_buf_get_finish(&log_ctx.start_custom, custom_length);
+            } else {
+                LOG_WRN("Custom data buffer too large for serialize buffer");
+                ring_buf_get_finish(&log_ctx.start_custom, custom_length);
+            }
+        }
 
         /* Encode using Z85 */
-        encoded_len = Z85_encode_with_padding((char *)serialize_buf, encoded, length);
+        encoded_len = Z85_encode_with_padding((char *)serialize_buf, encoded, serialize_pos);
         if (encoded_len > 0) {
             /* Print the log */
-            LOG_INF("LOG[%s] END %s", log_name, encoded);
+            LOG_INF("LOG[%s] START %u %s", log_name, epoch_id, encoded);
+            if (bytes_written) {
+                *bytes_written += encoded_len;
+            }
         }
 
-        /* Free the claimed data */
-        ring_buf_get_finish(&log_ctx.end_actions, length);
+        /* Free the claimed action data */
+        ring_buf_get_finish(&log_ctx.start_actions, action_length);
+    }
+
+    /* Process END buffer */
+    serialize_pos = 0;
+
+    action_length = ring_buf_get_claim(&log_ctx.end_actions, &action_data, UINT32_MAX);
+    if (action_length > 0) {
+        /* Copy actions to serialize buffer */
+        memset(serialize_buf, 0, sizeof(serialize_buf));
+        if (action_length > sizeof(serialize_buf)) {
+            action_length = sizeof(serialize_buf);
+        }
+        memcpy(serialize_buf, action_data, action_length);
+        serialize_pos = action_length;
+
+        /* Get and append custom data */
+        custom_length = ring_buf_get_claim(&log_ctx.end_custom, &custom_data, UINT32_MAX);
+        if (custom_length > 0) {
+            if (serialize_pos + custom_length <= sizeof(serialize_buf)) {
+                memcpy(serialize_buf + serialize_pos, custom_data, custom_length);
+                serialize_pos += custom_length;
+                ring_buf_get_finish(&log_ctx.end_custom, custom_length);
+            } else {
+                LOG_WRN("Custom data buffer too large for serialize buffer");
+                ring_buf_get_finish(&log_ctx.end_custom, custom_length);
+            }
+        }
+
+        /* Encode using Z85 */
+        encoded_len = Z85_encode_with_padding((char *)serialize_buf, encoded, serialize_pos);
+        if (encoded_len > 0) {
+            /* Print the log */
+            LOG_INF("LOG[%s] END %u %s", log_name, epoch_id, encoded);
+            if (bytes_written) {
+                *bytes_written += encoded_len;
+            }
+        }
+
+        /* Free the claimed action data */
+        ring_buf_get_finish(&log_ctx.end_actions, action_length);
     }
 
     /* Reset statistics */

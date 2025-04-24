@@ -48,7 +48,7 @@ static void showcase_basic_logging(void) {
 
     /* Flush the logs */
     size_t bytes_written;
-    int ret = sam_log_flush("BASIC", 100, &bytes_written);
+    int ret = sam_log_flush("BASIC", 1, &bytes_written);
     if (ret == 0) {
         LOG_INF("Basic logs flushed successfully");
     }
@@ -70,7 +70,7 @@ static void showcase_custom_data(void) {
 
     /* Flush the logs */
     size_t bytes_written;
-    sam_log_flush("CUSTOM", 100, &bytes_written);
+    sam_log_flush("CUSTOM", 2, &bytes_written);
     LOG_INF("Custom data logs flushed successfully");
 }
 
@@ -112,7 +112,7 @@ static void showcase_epoch_simulation(void) {
 
     /* Flush the logs */
     size_t bytes_written;
-    sam_log_flush("EPOCH", 100, &bytes_written);
+    sam_log_flush("EPOCH", 3, &bytes_written);
     LOG_INF("Epoch simulation logs flushed successfully");
 }
 

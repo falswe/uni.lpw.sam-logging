@@ -53,9 +53,9 @@ int sam_log_init(void);
  * 
  * @param status Status of the action
  * @param custom_status Custom status for custom actions
- * @param slot_idx Slot index of the action
+ * @param slot_idx Slot index of the action (actual slot where action occurred)
  * @param slot_idx_diff Difference from expected slot index
- * @param slots_to_use Number of slots used by the action
+ * @param slots_to_use Number of slots used by the action (actual value)
  * @param set_default_slots Whether to set this slots_to_use as default
  * @param custom_data Pointer to custom data to be logged
  * @param custom_data_len Length of the custom data
@@ -86,10 +86,10 @@ int sam_log_get_stats(struct sam_log_stats *stats);
  * @brief Flush logs and output as string
  * 
  * @param log_name Name identifier for this log
- * @param buffer_size Size of the buffer
- * @param bytes_written Pointer to store number of bytes written
+ * @param epoch_id Epoch ID or sequence number
+ * @param bytes_written Pointer to store number of bytes written (can be NULL)
  * @return int 0 on success, negative error code on failure
  */
-int sam_log_flush(char *log_name, size_t buffer_size, size_t *bytes_written);
+int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written);
 
 #endif /* _SAM_LOG_H_ */
