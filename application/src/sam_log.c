@@ -310,6 +310,7 @@ int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
     char encoded[SAM_LOG_SERIALIZE_BUF_SIZE * 5 / 4 + 10]; /* Z85 encoding overhead + padding */
     size_t encoded_len;
     size_t serialize_pos = 0;
+    struct sam_log_stats current_stats = log_ctx.stats;
 
     if (!log_name) {
         return -EINVAL;
@@ -397,6 +398,11 @@ int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
         /* Free the claimed action data */
         ring_buf_get_finish(&log_ctx.end_actions, action_length);
     }
+
+    /* Log statistics before resetting */
+    LOG_DBG("Logging stats: %u actions logged, %u dropped; %u custom fields logged, %u dropped",
+            current_stats.actions_logged, current_stats.actions_dropped,
+            current_stats.custom_fields_logged, current_stats.custom_fields_dropped);
 
     /* Reset statistics */
     memset(&log_ctx.stats, 0, sizeof(struct sam_log_stats));

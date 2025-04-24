@@ -159,21 +159,6 @@ static void showcase_overflow_handling(void) {
 }
 
 /**
- * @brief Display logging statistics
- */
-static void show_statistics(void) {
-    struct sam_log_stats stats;
-
-    if (sam_log_get_stats(&stats) == 0) {
-        LOG_INF("=== Logging Statistics ===");
-        LOG_INF("Actions logged: %u", stats.actions_logged);
-        LOG_INF("Actions dropped: %u", stats.actions_dropped);
-        LOG_INF("Custom fields logged: %u", stats.custom_fields_logged);
-        LOG_INF("Custom fields dropped: %u", stats.custom_fields_dropped);
-    }
-}
-
-/**
  * @brief Application main entry point
  */
 int main(void) {
@@ -208,9 +193,6 @@ int main(void) {
     /* Showcase overflow handling */
     showcase_overflow_handling();
     k_sleep(K_MSEC(100));
-
-    /* Show final statistics */
-    show_statistics();
 
     LOG_INF("Showcase complete!");
 
