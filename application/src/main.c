@@ -117,6 +117,48 @@ static void showcase_epoch_simulation(void) {
 }
 
 /**
+ * @brief Demonstrate buffer overflow handling with start/end buffers
+ */
+static void showcase_overflow_handling(void) {
+    LOG_INF("=== Buffer Overflow Handling Demo ===");
+
+    /* Create some custom data */
+    uint8_t packet_data[4] = {0xAA, 0xBB, 0xCC, 0xDD};
+
+    /*
+     * Fill the start buffer with many entries
+     * Note: Actual overflow depends on SAM_LOG_ACTIONS_BUF_SIZE and
+     * serialized action size, this is just a demonstration
+     */
+    LOG_INF("Adding 700 log entries to trigger overflow...");
+
+    for (int i = 0; i < 700; i++) {
+        /* Log a mix of simple and complex entries */
+        if (i % 10 == 0) {
+            /* Log with custom data occasionally */
+            sam_log_action(SAM_LOG_TX_DONE, 0, 2000 + i, 0, 1, false, packet_data,
+                           sizeof(packet_data));
+        } else {
+            /* Simple status log for most entries */
+            sam_log_action_status((i % 5 == 0) ? SAM_LOG_RX_SUCCESS : SAM_LOG_TX_DONE);
+        }
+    }
+
+    /* Add one distinctive entry we should see in the end buffer */
+    sam_log_action(SAM_LOG_SYNCH_DONE, 0, 5000, 0, 1, false, "FINAL ENTRY", 11);
+
+    /* Flush the logs */
+    size_t bytes_written;
+    sam_log_flush("OVERFLOW", 4, &bytes_written);
+
+    /* Show statistics */
+    struct sam_log_stats stats;
+    if (sam_log_get_stats(&stats) == 0) {
+        LOG_INF("Overflow test complete, should see START and END logs");
+    }
+}
+
+/**
  * @brief Display logging statistics
  */
 static void show_statistics(void) {
@@ -161,6 +203,10 @@ int main(void) {
 
     /* Showcase epoch simulation */
     showcase_epoch_simulation();
+    k_sleep(K_MSEC(100));
+
+    /* Showcase overflow handling */
+    showcase_overflow_handling();
     k_sleep(K_MSEC(100));
 
     /* Show final statistics */

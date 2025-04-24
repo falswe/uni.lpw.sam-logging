@@ -10,8 +10,8 @@
 LOG_MODULE_REGISTER(sam_log, CONFIG_LOG_DEFAULT_LEVEL);
 
 /* Configuration for the logging subsystem */
-#define SAM_LOG_ACTIONS_BUF_SIZE 4096 /* Should accommodate ~100 actions */
-#define SAM_LOG_CUSTOM_BUF_SIZE 4096
+#define SAM_LOG_ACTIONS_BUF_SIZE 512 /* Should accommodate ~100 actions */
+#define SAM_LOG_CUSTOM_BUF_SIZE 512
 #define SAM_LOG_SERIALIZE_BUF_SIZE 8192
 
 /* Structure representing a serialized action */
