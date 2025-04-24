@@ -243,17 +243,38 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
         action.hdr = hdr;
     }
 
-    /* Add the action to both start and end buffers */
-    ret = add_to_buffer(&log_ctx.start_actions, &log_ctx.start_custom, &action, custom_data,
-                        custom_data_len);
-    if (ret < 0) {
-        LOG_WRN("Failed to add to start buffer: %d", ret);
+    /* Try to add to start buffer first */
+    uint8_t buf[32]; /* Temporary buffer for serialized action */
+    size_t len = serialize_action(&action, buf, sizeof(buf));
+    if (len == 0) {
+        LOG_ERR("Failed to serialize action");
+        log_ctx.stats.actions_dropped++;
+        return -EINVAL;
     }
 
-    ret = add_to_buffer(&log_ctx.end_actions, &log_ctx.end_custom, &action, custom_data,
-                        custom_data_len);
-    if (ret < 0) {
-        LOG_WRN("Failed to add to end buffer: %d", ret);
+    bool start_buffer_full =
+        (ring_buf_space_get(&log_ctx.start_actions) < len ||
+         (custom_data_len > 0 && ring_buf_space_get(&log_ctx.start_custom) < custom_data_len));
+
+    /* Add to start buffer if there's space */
+    if (!start_buffer_full) {
+        ret = add_to_buffer(&log_ctx.start_actions, &log_ctx.start_custom, &action, custom_data,
+                            custom_data_len);
+        if (ret < 0) {
+            LOG_WRN("Failed to add to start buffer: %d", ret);
+            start_buffer_full = true;
+        }
+    }
+
+    /* Add to end buffer only if start buffer is full */
+    if (start_buffer_full) {
+        ret = add_to_buffer(&log_ctx.end_actions, &log_ctx.end_custom, &action, custom_data,
+                            custom_data_len);
+        if (ret < 0) {
+            LOG_WRN("Failed to add to end buffer: %d", ret);
+            log_ctx.stats.actions_dropped++;
+            return ret;
+        }
     }
 
     /* Update current slot index */
