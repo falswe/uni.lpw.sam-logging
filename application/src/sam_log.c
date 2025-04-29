@@ -14,17 +14,27 @@ LOG_MODULE_REGISTER(sam_log, CONFIG_LOG_DEFAULT_LEVEL);
 #define SAM_LOG_CUSTOM_BUF_SIZE 512
 #define SAM_LOG_SERIALIZE_BUF_SIZE 8192
 
+/* Define bit field sizes according to the specification */
+#define SAM_LOG_BIT_SIZE_M_HDR 1             /* 1 bit for m_hdr */
+#define SAM_LOG_BIT_SIZE_STATUS 5            /* 5 bits for status */
+#define SAM_LOG_BIT_SIZE_CUSTOM_STATUS 10    /* 10 bits for custom_status */
+#define SAM_LOG_BIT_SIZE_HDR 8               /* 8 bits for header */
+#define SAM_LOG_BIT_SIZE_SLOT_IDX 24         /* 24 bits for slot_idx */
+#define SAM_LOG_BIT_SIZE_SLOT_IDX_DIFF 16    /* 16 bits for slot_idx_diff */
+#define SAM_LOG_BIT_SIZE_SLOTS_TO_USE 8      /* 8 bits for slots_to_use */
+#define SAM_LOG_BIT_SIZE_TOTAL_CUSTOM_LEN 16 /* 16 bits for total_custom_len */
+
 /* Structure representing a serialized action */
 struct sam_log_packed_action {
-    uint8_t m_hdr : 1;         /* 1 if extended header is present */
-    uint8_t status : 5;        /* Action result status */
-    uint8_t reserved : 2;      /* Unused, for alignment */
-    uint16_t custom_status;    /* Custom status for custom actions */
-    uint8_t hdr;               /* Standard header bitmask */
-    uint32_t slot_idx : 24;    /* Slot index for the action */
-    int16_t slot_idx_diff;     /* Difference from expected slot */
-    uint8_t slots_to_use;      /* Number of slots used by the action */
-    uint16_t total_custom_len; /* Total length of custom fields */
+    uint8_t m_hdr : SAM_LOG_BIT_SIZE_M_HDR;                  /* 1 if extended header is present */
+    uint8_t status : SAM_LOG_BIT_SIZE_STATUS;                /* Action result status */
+    uint16_t custom_status : SAM_LOG_BIT_SIZE_CUSTOM_STATUS; /* Custom status as per spec */
+    uint8_t hdr : SAM_LOG_BIT_SIZE_HDR;                      /* Standard header bitmask */
+    uint32_t slot_idx : SAM_LOG_BIT_SIZE_SLOT_IDX;           /* Slot index for the action */
+    int16_t slot_idx_diff : SAM_LOG_BIT_SIZE_SLOT_IDX_DIFF;  /* Difference from expected slot */
+    uint8_t slots_to_use : SAM_LOG_BIT_SIZE_SLOTS_TO_USE; /* Number of slots used by the action */
+    uint16_t total_custom_len
+        : SAM_LOG_BIT_SIZE_TOTAL_CUSTOM_LEN; /* Total length of custom fields */
 } __attribute__((packed));
 
 /* Structure for the logging subsystem */
@@ -63,13 +73,19 @@ static size_t serialize_action(const struct sam_log_packed_action *action, uint8
     /* Write m_hdr and status (first byte) */
     buf[pos++] = ((action->m_hdr & 0x01) << 7) | (action->status & 0x1F);
 
-    /* If status is SAM_LOG_UNKNOWN, write custom_status */
+    /* If status is SAM_LOG_UNKNOWN, write custom_status (10 bits) */
     if (action->status == SAM_LOG_UNKNOWN) {
         if (pos + 2 > bufsize) {
             return 0;
         }
-        buf[pos++] = (action->custom_status >> 8) & 0xFF;
-        buf[pos++] = action->custom_status & 0xFF;
+
+        /* We need to access custom_status through the structure */
+        uint16_t custom_status_value =
+            action->custom_status & ((1 << SAM_LOG_BIT_SIZE_CUSTOM_STATUS) - 1);
+
+        /* Write the 10-bit custom_status value across two bytes */
+        buf[pos++] = (custom_status_value >> 2) & 0xFF;          /* Upper 8 bits */
+        buf[pos++] = ((custom_status_value & 0x03) << 6) & 0xC0; /* Lower 2 bits in top position */
     }
 
     /* If m_hdr is set, write additional fields */
@@ -205,7 +221,12 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
 
     /* If status is the maximum value, we need to set custom_status */
     if (status == SAM_LOG_UNKNOWN) {
-        action.custom_status = custom_status;
+        /* Ensure custom_status fits in the 10-bit field */
+        action.custom_status = custom_status & ((1 << SAM_LOG_BIT_SIZE_CUSTOM_STATUS) - 1);
+        if (custom_status != action.custom_status) {
+            LOG_WRN("Custom status 0x%04x truncated to 10 bits: 0x%03x", custom_status,
+                    action.custom_status);
+        }
     }
 
     /* If we have any additional fields, we need the extended header */

@@ -1,28 +1,92 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SAM Log Analyzer</title>
     <style>
-        body { font-family: system-ui, sans-serif; margin: 20px; line-height: 1.5; }
-        h1 { color: #2a4d69; }
-        textarea { width: 100%; height: 100px; margin: 10px 0; padding: 8px; }
-        button { padding: 8px 16px; margin-right: 8px; margin-bottom: 10px; }
-        .result { border: 1px solid #ccc; padding: 15px; margin-top: 20px; border-radius: 4px; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; }
-        th { background-color: #f2f2f2; }
-        .custom-data { font-family: monospace; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .custom-data:hover { white-space: normal; overflow: visible; }
-        pre { background-color: #f5f5f5; padding: 10px; border-radius: 4px; overflow: auto; }
-        .error { color: #d9534f; font-weight: bold; }
-        .debug { color: #5bc0de; font-style: italic; }
+        body {
+            font-family: system-ui, sans-serif;
+            margin: 20px;
+            line-height: 1.5;
+        }
+
+        h1 {
+            color: #2a4d69;
+        }
+
+        textarea {
+            width: 100%;
+            height: 100px;
+            margin: 10px 0;
+            padding: 8px;
+        }
+
+        button {
+            padding: 8px 16px;
+            margin-right: 8px;
+            margin-bottom: 10px;
+        }
+
+        .result {
+            border: 1px solid #ccc;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 4px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+
+        .custom-data {
+            font-family: monospace;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .custom-data:hover {
+            white-space: normal;
+            overflow: visible;
+        }
+
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow: auto;
+        }
+
+        .error {
+            color: #d9534f;
+            font-weight: bold;
+        }
+
+        .debug {
+            color: #5bc0de;
+            font-style: italic;
+        }
     </style>
 </head>
+
 <body>
     <h1>SAM Log Analyzer</h1>
-    
+
     <div>
         <button id="load-basic">Load Basic Log</button>
         <button id="load-custom">Load Custom Data Log</button>
@@ -31,82 +95,82 @@
         <button id="parse">Parse</button>
         <button id="clear">Clear</button>
     </div>
-    
+
     <textarea id="input" placeholder="Paste SAM log here..."></textarea>
-    
+
     <div>
         <label><input type="checkbox" id="show-hex-dump" checked> Show Hex Dump of Decoded Data</label>
         <label><input type="checkbox" id="show-debug" checked> Show Debug Info</label>
     </div>
-    
+
     <div class="result" id="result"></div>
-    
+
     <script>
         // Z85 decoder with robust error handling
         function decodeZ85(encoded) {
             if (!encoded || encoded.length === 0) return new Uint8Array(0);
-            
+
             // Clean up the encoded string - remove any whitespace, newlines
             encoded = encoded.replace(/\s+/g, "");
-            
+
             // Known valid Z85 chars
             const base85 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#";
             const lookup = {};
             for (let i = 0; i < base85.length; i++) {
                 lookup[base85[i]] = i;
             }
-            
+
             // Check if string has valid length (multiple of 5 chars plus possible padding)
             const paddingDigit = parseInt(encoded.charAt(0));
             let encodedData = encoded;
             let padding = 0;
-            
+
             if (!isNaN(paddingDigit) && paddingDigit >= 1 && paddingDigit <= 4) {
                 // Valid padding digit
                 encodedData = encoded.substring(1);
                 padding = 4 - paddingDigit;
             }
-            
+
             // Handle invalid length - just use what we can
             if (encodedData.length % 5 !== 0) {
                 const extra = encodedData.length % 5;
                 // Take groups of 5 characters only
                 encodedData = encodedData.substring(0, encodedData.length - extra);
             }
-            
+
             if (encodedData.length === 0) {
                 return new Uint8Array(0);
             }
-            
+
             // Calculate output length and create buffer
             const decodedLength = Math.floor(encodedData.length * 4 / 5);
             const result = new Uint8Array(decodedLength);
-            
+
             // Decode each 5-character group into 4 bytes
             let j = 0;
             for (let i = 0; i < encodedData.length; i += 5) {
                 if (i + 4 >= encodedData.length) break;
-                
+
                 // Check for valid characters before decoding
                 const chars = [
-                    encodedData[i], 
-                    encodedData[i+1], 
-                    encodedData[i+2], 
-                    encodedData[i+3], 
-                    encodedData[i+4]
+                    encodedData[i],
+                    encodedData[i + 1],
+                    encodedData[i + 2],
+                    encodedData[i + 3],
+                    encodedData[i + 4]
                 ];
-                
+
                 if (chars.some(char => lookup[char] === undefined)) {
                     // Skip this group if any character is invalid
                     continue;
                 }
-                
+
                 // Decode 5 characters into value
                 let value = 0;
                 for (let k = 0; k < 5; k++) {
                     value = value * 85 + lookup[encodedData[i + k]];
                 }
-                
+
                 // Write 4 bytes, big endian
                 if (j + 3 < result.length) {
                     result[j] = (value >> 24) & 0xFF;
@@ -116,22 +180,22 @@
                     j += 4;
                 }
             }
-            
+
             // Adjust for padding if needed
             if (!isNaN(paddingDigit) && paddingDigit < 4) {
                 return result.slice(0, decodedLength - padding);
             }
-            
+
             return result;
         }
-        
+
         // Create hex dump of binary data
         function hexDump(data) {
             const hexChars = '0123456789ABCDEF';
             let hexOutput = '';
             let asciiOutput = '';
             let output = '';
-            
+
             for (let i = 0; i < data.length; i++) {
                 // Start a new line every 16 bytes
                 if (i % 16 === 0) {
@@ -142,15 +206,15 @@
                     }
                     hexOutput = (i).toString(16).padStart(4, '0') + ': ';
                 }
-                
+
                 // Add hex representation
                 const byte = data[i];
                 hexOutput += hexChars[(byte >> 4) & 0xF] + hexChars[byte & 0xF] + ' ';
-                
+
                 // Add ASCII representation
                 asciiOutput += (byte >= 32 && byte <= 126) ? String.fromCharCode(byte) : '.';
             }
-            
+
             // Add the last line if there's anything left
             if (hexOutput) {
                 // Pad the last line to align the ASCII output
@@ -159,34 +223,34 @@
                 }
                 output += hexOutput + ' | ' + asciiOutput;
             }
-            
+
             return output;
         }
-        
+
         // Strict validation of action headers
         function isValidActionHeader(buffer, pos) {
             if (pos >= buffer.length) return false;
-            
+
             // First byte: check m_hdr and status
             const firstByte = buffer[pos];
             const m_hdr = (firstByte & 0x80) >> 7;
             const status = firstByte & 0x1F;
-            
+
             // Status must be in range 0-19, and reserved bits must be 0
             if (status > 19 || (firstByte & 0x60) !== 0) return false;
-            
+
             // If m_hdr is set, we need enough bytes for header
             if (m_hdr === 1) {
                 if (pos + 1 >= buffer.length) return false;
-                
+
                 // Check header byte - must be a reasonable value
                 const hdr = buffer[pos + 1];
                 if (hdr > 63) return false; // Header should have reasonable bit pattern
             }
-            
+
             return true;
         }
-        
+
         // Determine how much custom data is expected after an action header
         function getCustomDataLength(buffer, pos) {
             const SAM_LOG_HDR = {
@@ -197,38 +261,38 @@
                 CUSTOM_FIELDS: (1 << 4),
                 DEFAULT_SLOTS_TO_USE: (1 << 5)
             };
-            
+
             const firstByte = buffer[pos];
             const m_hdr = (firstByte & 0x80) >> 7;
             const status = firstByte & 0x1F;
-            
+
             // If no m_hdr, no custom data
             if (m_hdr === 0) return 0;
-            
+
             // Header byte is at position pos+1
             if (pos + 1 >= buffer.length) return 0;
-            
+
             const hdr = buffer[pos + 1];
-            
+
             // If CUSTOM_FIELDS bit is not set, no custom data
             if (!(hdr & SAM_LOG_HDR.CUSTOM_FIELDS)) return 0;
-            
+
             // Calculate position of custom data length field
             let offset = 2; // Start after m_hdr and header byte
-            
+
             // Skip other fields based on header bits
             if (hdr & SAM_LOG_HDR.SLOT_IDX) offset += 3;
             if (hdr & SAM_LOG_HDR.SLOT_IDX_DIFF) offset += 2;
             if (hdr & SAM_LOG_HDR.SLOTS_TO_USE) offset += 1;
-            
+
             // Custom data length is next
             if (pos + offset + 1 >= buffer.length) return 0;
-            
+
             // Read 16-bit length (big endian)
             const customLen = (buffer[pos + offset] << 8) | buffer[pos + offset + 1];
             return customLen;
         }
-        
+
         // Get the total length of an action (header + custom data)
         function getActionTotalLength(buffer, pos) {
             const SAM_LOG_HDR = {
@@ -239,41 +303,41 @@
                 CUSTOM_FIELDS: (1 << 4),
                 DEFAULT_SLOTS_TO_USE: (1 << 5)
             };
-            
+
             const firstByte = buffer[pos];
             const m_hdr = (firstByte & 0x80) >> 7;
             const status = firstByte & 0x1F;
-            
+
             // If no m_hdr, just the status byte
             if (m_hdr === 0) return 1;
-            
+
             // Header byte is at position pos+1
             if (pos + 1 >= buffer.length) return 1;
-            
+
             const hdr = buffer[pos + 1];
-            
+
             // Start with the base size (m_hdr + header byte)
             let size = 2;
-            
+
             // Add size for other fields based on header bits
             if (hdr & SAM_LOG_HDR.SLOT_IDX) size += 3;
             if (hdr & SAM_LOG_HDR.SLOT_IDX_DIFF) size += 2;
             if (hdr & SAM_LOG_HDR.SLOTS_TO_USE) size += 1;
-            
+
             // Add size for custom data length field if present
             if (hdr & SAM_LOG_HDR.CUSTOM_FIELDS) {
                 size += 2;
-                
+
                 // If within bounds, add the actual custom data length
                 if (pos + size + 1 < buffer.length) {
                     const customLen = (buffer[pos + size - 2] << 8) | buffer[pos + size - 1];
                     size += customLen;
                 }
             }
-            
+
             return size;
         }
-        
+
         // Correctly parse a single action, returning action object and new position
         function parseAction(buffer, pos, defaultSlotsToUse, currentSlotIdx) {
             const SAM_LOG_HDR = {
@@ -284,7 +348,7 @@
                 CUSTOM_FIELDS: (1 << 4),
                 DEFAULT_SLOTS_TO_USE: (1 << 5)
             };
-            
+
             const STATUS_NAMES = {
                 0: 'RX_SUCCESS', 1: 'RX_TIMEOUT', 2: 'RX_ERROR', 3: 'RX_MALFORMED',
                 4: 'RX_LISTEN_LATE', 5: 'RX_LISTEN_FAIL', 6: 'TIMER_EVENT', 7: 'TX_DONE',
@@ -292,14 +356,14 @@
                 15: 'SYNCH_FAIL', 16: 'SKIP_SUCCESS', 17: 'RESTART_LATE', 18: 'RESTART_FAIL',
                 19: 'UNKNOWN'
             };
-            
+
             const startPos = pos;
-            
+
             // First byte: m_hdr and status
             const firstByte = buffer[pos++];
             const m_hdr = (firstByte & 0x80) >> 7;
             const status = firstByte & 0x1F;
-            
+
             // Create action object
             const action = {
                 status,
@@ -309,45 +373,51 @@
                 slotsToUse: defaultSlotsToUse,
                 startPos
             };
-            
-            // Process custom status for UNKNOWN
+
+            // Process custom status for UNKNOWN (SAM_LOG_UNKNOWN = 19)
             if (status === 19 && pos + 2 <= buffer.length) {
-                action.customStatus = (buffer[pos] << 8) | buffer[pos + 1];
-                pos += 2;
+                // Read upper 8 bits from first byte
+                const highByte = buffer[pos++];
+
+                // Read lower 2 bits from second byte (top position)
+                const lowBits = (buffer[pos++] & 0xC0) >> 6;
+
+                // Combine to get 10-bit value
+                action.customStatus = (highByte << 2) | lowBits;
             }
-            
+
             // Process extended header if present
             if (m_hdr === 1 && pos < buffer.length) {
                 const hdr = buffer[pos++];
                 action.hdr = hdr;
-                
+
                 // Process slot index if present
                 if ((hdr & SAM_LOG_HDR.SLOT_IDX) && pos + 3 <= buffer.length) {
-                    action.slotIdx = (buffer[pos] << 16) | (buffer[pos+1] << 8) | buffer[pos+2];
+                    action.slotIdx = (buffer[pos] << 16) | (buffer[pos + 1] << 8) | buffer[pos + 2];
                     pos += 3;
                 }
-                
+
                 // Process slot difference if present
                 if ((hdr & SAM_LOG_HDR.SLOT_IDX_DIFF) && pos + 2 <= buffer.length) {
-                    let slotIdxDiff = (buffer[pos] << 8) | buffer[pos+1];
+                    let slotIdxDiff = (buffer[pos] << 8) | buffer[pos + 1];
                     if (slotIdxDiff & 0x8000) {
                         slotIdxDiff = -(0x10000 - slotIdxDiff);
                     }
                     action.slotIdxDiff = slotIdxDiff;
                     pos += 2;
                 }
-                
+
                 // Process slots to use if present
                 if ((hdr & SAM_LOG_HDR.SLOTS_TO_USE) && pos < buffer.length) {
                     action.slotsToUse = buffer[pos++];
                 }
-                
+
                 // Process custom data
                 if ((hdr & SAM_LOG_HDR.CUSTOM_FIELDS) && pos + 2 <= buffer.length) {
-                    const customLen = (buffer[pos] << 8) | buffer[pos+1];
+                    const customLen = (buffer[pos] << 8) | buffer[pos + 1];
                     action.customDataLength = customLen;
                     pos += 2;
-                    
+
                     // Extract custom data if available
                     if (customLen > 0 && pos + customLen <= buffer.length) {
                         action.customData = Array.from(buffer.slice(pos, pos + customLen))
@@ -355,37 +425,37 @@
                         pos += customLen;
                     }
                 }
-                
+
                 // Set scan flag if present
                 if (hdr & SAM_LOG_HDR.SCAN) {
                     action.isScan = true;
                 }
             }
-            
+
             return { action, newPos: pos };
         }
-        
+
         // Parse SAM log data with clean handling of boundaries
         function parseLogData(buffer, logName) {
             // Special case for CUSTOM log
             if (logName === 'CUSTOM') {
                 return parseCustomLog(buffer);
             }
-            
+
             const actions = [];
             let defaultSlotsToUse = 1;
             let currentSlotIdx = 0;
             let pos = 0;
             let debugInfo = [];
-            
+
             // Sanity check on buffer
             if (!buffer || buffer.length === 0) {
                 debugInfo.push("Empty buffer");
                 return { actions, debugInfo };
             }
-            
+
             debugInfo.push(`Decoding buffer of ${buffer.length} bytes`);
-            
+
             // Process all valid actions in the buffer
             while (pos < buffer.length) {
                 // Check if this looks like a valid action header
@@ -393,68 +463,68 @@
                     debugInfo.push(`Stopping at pos ${pos}: Not a valid action header`);
                     break;
                 }
-                
+
                 // Determine total action length (header + custom data)
                 const actionLength = getActionTotalLength(buffer, pos);
-                
+
                 // Safety check - make sure we don't overrun the buffer
                 if (pos + actionLength > buffer.length) {
                     debugInfo.push(`Action at pos ${pos} would exceed buffer bounds (length ${actionLength})`);
                     break;
                 }
-                
+
                 // Parse this action
                 const { action, newPos } = parseAction(buffer, pos, defaultSlotsToUse, currentSlotIdx);
-                
+
                 // Validate the parsed action
                 if (action.slotIdx > 1000000 || action.slotsToUse > 100) {
                     debugInfo.push(`Suspicious action at pos ${pos}: slot_idx=${action.slotIdx}, slots_to_use=${action.slotsToUse}`);
                     break;
                 }
-                
+
                 // Add the action
                 actions.push(action);
-                
+
                 // Update tracking for next action
                 if (action.status === 14) { // SYNCH_DONE
                     currentSlotIdx = action.slotIdx;
                 } else {
                     currentSlotIdx = action.slotIdx + action.slotsToUse;
                 }
-                
+
                 // Update default slots if specified
                 if (action.hdr && (action.hdr & (1 << 5))) {
                     defaultSlotsToUse = action.slotsToUse;
                 }
-                
+
                 // Move to next action
                 pos = newPos;
-                
+
                 // Safety check for infinite loops
                 if (actions.length > 1000) {
                     debugInfo.push("Too many actions, stopping parse");
                     break;
                 }
             }
-            
+
             // Add summary information
             if (actions.length > 0) {
                 const customDataCount = actions.filter(a => a.customData).length;
                 debugInfo.push(`Found ${actions.length} valid actions, ${customDataCount} with custom data`);
             }
-            
+
             return {
                 actions,
                 debugInfo
             };
         }
-        
+
         // Special parser for the CUSTOM log
         function parseCustomLog(buffer) {
             // Hardcoded knowledge of the CUSTOM log structure
             const actions = [];
             let debugInfo = [];
-            
+
             try {
                 const SAM_LOG_HDR = {
                     SLOT_IDX: (1 << 0),
@@ -464,7 +534,7 @@
                     CUSTOM_FIELDS: (1 << 4),
                     DEFAULT_SLOTS_TO_USE: (1 << 5)
                 };
-                
+
                 // Add RX_SUCCESS action
                 const action1 = {
                     status: 0,
@@ -475,7 +545,7 @@
                     slotsToUse: 1,
                     customDataLength: 16
                 };
-                
+
                 // Add TX_DONE action
                 const action2 = {
                     status: 7,
@@ -486,27 +556,27 @@
                     slotsToUse: 2,
                     customDataLength: 32
                 };
-                
+
                 actions.push(action1);
                 actions.push(action2);
-                
+
                 // Assign custom data
                 const customDataStart = 14; // After both action headers
-                
+
                 if (buffer.length >= customDataStart + 16) {
                     action1.customData = Array.from(buffer.slice(customDataStart, customDataStart + 16))
                         .map(b => b.toString(16).padStart(2, '0'));
                 } else {
                     debugInfo.push("Buffer too small for first action's custom data");
                 }
-                
+
                 if (buffer.length >= customDataStart + 16 + 32) {
                     action2.customData = Array.from(buffer.slice(customDataStart + 16, customDataStart + 16 + 32))
                         .map(b => b.toString(16).padStart(2, '0'));
                 } else {
                     debugInfo.push("Buffer too small for second action's custom data");
                 }
-                
+
                 return {
                     actions,
                     debugInfo
@@ -520,52 +590,52 @@
                 };
             }
         }
-        
+
         // Parse SAM log lines
         function parseLog(logText) {
             const logs = [];
             const logPattern = /LOG\[(.*?)\] (START|END) (\d+) (.*)/;
             const lines = logText.split('\n');
-            
+
             // For long logs, we need to handle them specially
             let longLogName = '';
             let longLogBuffer = '';
             let longLogBufferName = '';
             let longLogEpochId = 0;
-            
+
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
                 if (line === '') continue;
-                
+
                 const match = line.match(logPattern);
                 if (match) {
                     const [_, logName, bufferName, epochId, encodedData] = match;
-                    
+
                     // Check if this is a long log that spans multiple lines
-                    if (i + 1 < lines.length && !lines[i+1].match(logPattern) && lines[i+1].trim() !== '') {
+                    if (i + 1 < lines.length && !lines[i + 1].match(logPattern) && lines[i + 1].trim() !== '') {
                         // This is the start of a multi-line log
                         longLogName = logName;
                         longLogBufferName = bufferName;
                         longLogEpochId = parseInt(epochId);
                         longLogBuffer = encodedData;
-                        
+
                         // Continue appending lines until we find another LOG pattern or end of input
                         let j = i + 1;
                         while (j < lines.length && !lines[j].match(logPattern) && lines[j].trim() !== '') {
                             longLogBuffer += lines[j].trim();
                             j++;
                         }
-                        
+
                         // Skip the lines we just processed
                         i = j - 1;
-                        
+
                         // Process the complete log
                         try {
                             const decodedData = decodeZ85(longLogBuffer);
-                            
+
                             if (decodedData && decodedData.length > 0) {
                                 const { actions, debugInfo } = parseLogData(decodedData, longLogName);
-                                
+
                                 logs.push({
                                     logName: longLogName,
                                     bufferName: longLogBufferName,
@@ -599,10 +669,10 @@
                         // Regular single-line log
                         try {
                             const decodedData = decodeZ85(encodedData);
-                            
+
                             if (decodedData && decodedData.length > 0) {
                                 const { actions, debugInfo } = parseLogData(decodedData, logName);
-                                
+
                                 logs.push({
                                     logName,
                                     bufferName,
@@ -635,14 +705,14 @@
                     }
                 }
             }
-            
+
             return logs;
         }
-        
+
         // Format header bits for display
         function formatHeaderBits(hdr) {
             if (hdr === undefined) return '';
-            
+
             const SAM_LOG_HDR = {
                 SLOT_IDX: (1 << 0),
                 SLOTS_TO_USE: (1 << 1),
@@ -651,7 +721,7 @@
                 CUSTOM_FIELDS: (1 << 4),
                 DEFAULT_SLOTS_TO_USE: (1 << 5)
             };
-            
+
             const bits = [];
             if (hdr & SAM_LOG_HDR.SLOT_IDX) bits.push('SLOT_IDX');
             if (hdr & SAM_LOG_HDR.SLOTS_TO_USE) bits.push('SLOTS_TO_USE');
@@ -659,30 +729,30 @@
             if (hdr & SAM_LOG_HDR.SCAN) bits.push('SCAN');
             if (hdr & SAM_LOG_HDR.CUSTOM_FIELDS) bits.push('CUSTOM_FIELDS');
             if (hdr & SAM_LOG_HDR.DEFAULT_SLOTS_TO_USE) bits.push('DEFAULT_SLOTS_TO_USE');
-            
+
             return bits.join(', ');
         }
-        
+
         // Display parsed results
         function displayResults(logs) {
             const resultDiv = document.getElementById('result');
             const showHexDump = document.getElementById('show-hex-dump').checked;
             const showDebug = document.getElementById('show-debug').checked;
-            
+
             if (logs.length === 0) {
                 resultDiv.innerHTML = '<p>No valid logs found.</p>';
                 return;
             }
-            
+
             let html = '';
-            
+
             // Display results for each log
             logs.forEach((log, logIndex) => {
                 html += `
                     <h2>Log: ${log.logName}, Section: ${log.bufferName}, Epoch: ${log.epochId}</h2>
                     <p><strong>Found ${log.actions.length} actions</strong></p>
                 `;
-                
+
                 // Show debug info if enabled
                 if (showDebug && log.debugInfo && log.debugInfo.length > 0) {
                     html += `
@@ -696,7 +766,7 @@
                         </details>
                     `;
                 }
-                
+
                 // Show hex dump if enabled
                 if (showHexDump && log.decodedData && log.decodedData.length > 0) {
                     html += `
@@ -706,7 +776,7 @@
                         </details>
                     `;
                 }
-                
+
                 if (log.actions.length === 0) {
                     html += `<p class="error">No valid actions found in this log.</p>`;
                 } else {
@@ -726,7 +796,7 @@
                             </thead>
                             <tbody>
                     `;
-                    
+
                     // Add rows for each action
                     log.actions.forEach((action, index) => {
                         html += `
@@ -741,56 +811,57 @@
                             </tr>
                         `;
                     });
-                    
+
                     html += `
                             </tbody>
                         </table>
                     `;
                 }
-                
+
                 // Add separator between logs
                 if (logIndex < logs.length - 1) {
                     html += '<hr>';
                 }
             });
-            
+
             resultDiv.innerHTML = html;
         }
-        
+
         // Set up event listeners
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             const inputArea = document.getElementById('input');
-            
-            document.getElementById('load-basic').addEventListener('click', function() {
+
+            document.getElementById('load-basic').addEventListener('click', function () {
                 inputArea.value = 'LOG[BASIC] START 1 10eyNP04JH5001+O0SSi2';
             });
-            
-            document.getElementById('load-custom').addEventListener('click', function() {
+
+            document.getElementById('load-custom').addEventListener('click', function () {
                 inputArea.value = 'LOG[CUSTOM] START 2 3FdR+Ywb)f@6952z0STty0rJua1Qkhq2)}4G4gS)G0rJua1Qkhq2)}4G4gS)W5Ft->6=4P585:Cl9uDp5';
             });
-            
-            document.getElementById('load-epoch').addEventListener('click', function() {
+
+            document.getElementById('load-epoch').addEventListener('click', function () {
                 inputArea.value = 'LOG[EPOCH] START 3 2>U$#0U:ik4Dg=%00+KW0000027e+E0//K*0I){V19Df902aXf0000027e+E0//K*0I){V19Df902aXC0000122aXC0vA6L0I){V2I#L3052z35Rj<052zu0I){V2I#L305Rj<1f^Jl0000127e+E5Vq5c0I){V37e+E0//K*0I){V37e+E0//K*0I){V37e+E0//K*0I){V3';
             });
-            
-            document.getElementById('load-overflow').addEventListener('click', function() {
+
+            document.getElementById('load-overflow').addEventListener('click', function () {
                 inputArea.value = 'LOG[OVERFLOW] START 4 3Hz6T)=&BaH2l$Fs00--l2zS@)2IGgU1p2ep2lj#l2m31$00?M=00AJi2l$kl2l$G?695p90rrlc2l$Fl2l$FsHz6T){Ygu$2l$Fs00--l2zS@)2M+2b1p2ep2lj#l2m31$00&#l00AJi2l$kl2l$G?695pN0rrlc2l$Fl2l$FsHz6T[aoqDB2l$Fs00--l2zS@)2R2&P1p2ep2lj#l2m31$00>yZ00AJi2l$kl2l$G?695q40rrlc2l$Fl2l$FsHz6T[nc5X[2l$Fs00--l2zS@)2VpW61p2ep2lj#l2m31$00(*g00AJi2l$kl2l$G?695qI0rrlc2l$Fl2l$FsHz6T[z#/}w2l$Fs00--l2zS@)2ZMHK1p2ep2lj#l2m31$00[kU00AJi2l$kl2l$G?695q#0rrlc2l$Fl2l$FsHz6T[M&Nf&2l$Fs00--l2zS@)2+?t11p2ep2lj#l2m31$00]Ub00AJi2l$kl2l$G?695rD0rrlc2l$Fl2l$FsHz6T[ZYsAr2l$Fs00--l2zS@)2*9eF1p2ep2lk1eYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG9hYuG7h';
             });
-            
-            document.getElementById('parse').addEventListener('click', function() {
+
+            document.getElementById('parse').addEventListener('click', function () {
                 const logs = parseLog(inputArea.value);
                 displayResults(logs);
             });
-            
-            document.getElementById('clear').addEventListener('click', function() {
+
+            document.getElementById('clear').addEventListener('click', function () {
                 inputArea.value = '';
                 document.getElementById('result').innerHTML = '';
             });
-            
+
             // Load the custom data log by default
             document.getElementById('load-custom').click();
             document.getElementById('parse').click();
         });
     </script>
 </body>
+
 </html>
