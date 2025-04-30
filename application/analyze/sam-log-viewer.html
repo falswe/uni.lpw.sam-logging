@@ -259,7 +259,7 @@
         // Create binary view of data
         function binaryView(data) {
             let output = '';
-            
+
             for (let i = 0; i < data.length; i++) {
                 // Start a new line every 8 bytes
                 if (i % 8 === 0) {
@@ -268,17 +268,17 @@
                     }
                     output += (i).toString(16).padStart(4, '0') + ': ';
                 }
-                
+
                 // Convert byte to binary representation
                 const byte = data[i];
                 const binary = byte.toString(2).padStart(8, '0');
-                
+
                 // Format binary with highlighting and nibble separator
                 const formattedBinary = `<span class="binary-byte">${binary.slice(0, 4)}<span class="binary-byte-divider">_</span>${binary.slice(4)}</span>`;
-                
+
                 output += formattedBinary + ' ';
             }
-            
+
             return output;
         }
 
@@ -745,11 +745,13 @@
                                 <tr>
                                     <th>#</th>
                                     <th>Status</th>
+                                    <th>Custom Status</th>
+                                    <th>Header Bits</th>
                                     <th>Slot Index</th>
                                     <th>Slots To Use</th>
+                                    <th>Sets Default</th>
                                     <th>Slot Diff</th>
                                     <th>Custom Data</th>
-                                    <th>Header Bits</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -761,11 +763,13 @@
                             <tr>
                                 <td>${index + 1}</td>
                                 <td>${action.statusName} (${action.status})</td>
+                                <td>${action.customStatus !== undefined ? action.customStatus : '-'}</td>
+                                <td>${formatHeaderBits(action.hdr)}</td>
                                 <td>${action.slotIdx !== undefined ? action.slotIdx : '-'}</td>
                                 <td>${action.slotsToUse !== undefined ? action.slotsToUse : '1'}</td>
+                                <td>${action.setsDefaultSlots ? 'Yes' : 'No'}</td>
                                 <td>${action.slotIdxDiff !== undefined ? action.slotIdxDiff : '-'}</td>
                                 <td class="custom-data">${action.customData ? action.customData.join(' ') : 'None'}</td>
-                                <td>${formatHeaderBits(action.hdr)}</td>
                             </tr>
                         `;
                     });
