@@ -289,6 +289,47 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
 
     /* Add to end buffer only if start buffer is full */
     if (start_buffer_full) {
+        uint32_t action_buf_free_space = ring_buf_space_get(&log_ctx.end_actions);
+        uint32_t custom_buf_free_space = ring_buf_space_get(&log_ctx.end_custom);
+
+        while (action_buf_free_space < len || custom_buf_free_space < custom_data_len) {
+            /* Remove one action to make space for the new one */
+            uint8_t action_mandatory_data;
+            ring_buf_get(&log_ctx.end_actions, &action_mandatory_data, 1);
+
+            if ((action_mandatory_data & CUSTOM_STATUS_BITMASK) == CUSTOM_STATUS_BITMASK) {
+                /* Status unknown, need to remove the custom status */
+                ring_buf_get(&log_ctx.end_actions, NULL, 2);
+            }
+            if ((action_mandatory_data & EXTENDED_HDR_BITMASK) == EXTENDED_HDR_BITMASK) {
+                /* Extended header, need to remove the custom fields */
+                uint8_t hdr;
+
+                ring_buf_get(&log_ctx.end_actions, &hdr, 1);
+
+                if (hdr & SAM_LOG_HDR_SLOT_IDX) {
+                    ring_buf_get(&log_ctx.end_actions, NULL, 3);
+                }
+                if (hdr & SAM_LOG_HDR_SLOT_IDX_DIFF) {
+                    ring_buf_get(&log_ctx.end_actions, NULL, 2);
+                }
+                if (hdr & SAM_LOG_HDR_SLOTS_TO_USE) {
+                    ring_buf_get(&log_ctx.end_actions, NULL, 1);
+                }
+                if (hdr & SAM_LOG_HDR_CUSTOM_FIELDS) {
+                    uint16_t total_custom_len;
+
+                    ring_buf_get(&log_ctx.end_actions, &total_custom_len, 2);
+                    ring_buf_get_finish(&log_ctx.end_custom, total_custom_len);
+                    log_ctx.stats.custom_fields_dropped++;
+                }
+            }
+            log_ctx.stats.actions_dropped++;
+
+            action_buf_free_space = ring_buf_space_get(&log_ctx.end_actions);
+            custom_buf_free_space = ring_buf_space_get(&log_ctx.end_custom);
+        }
+
         ret = add_to_buffer(&log_ctx.end_actions, &log_ctx.end_custom, &action, custom_data,
                             custom_data_len);
         if (ret < 0) {

@@ -7,22 +7,22 @@
 
 /* Status values */
 enum sam_log_status {
-  SAM_LOG_RX_SUCCESS             = 0,
-  SAM_LOG_RX_TIMEOUT             = 1,
-  SAM_LOG_RX_ERROR               = 2,
-  SAM_LOG_RX_MALFORMED           = 3,
-  SAM_LOG_RX_LISTEN_LATE         = 4,
-  SAM_LOG_RX_LISTEN_FAIL         = 5,
-  SAM_LOG_TIMER_EVENT            = 6, /* not used for now */
-  SAM_LOG_TX_DONE                = 7,
-  SAM_LOG_TX_SCHED_LATE          = 8,
-  SAM_LOG_TX_SCHED_FAIL          = 9,
-  SAM_LOG_SYNCH_DONE             = 14,
-  SAM_LOG_SYNCH_FAIL             = 15,
-  SAM_LOG_SKIP_SUCCESS           = 16, /* how many skipped? slots_to_use */
-  SAM_LOG_RESTART_LATE           = 17, /* not used for now */
-  SAM_LOG_RESTART_FAIL           = 18, /* not used for now */
-  SAM_LOG_UNKNOWN                = 19,
+  SAM_LOG_RX_SUCCESS             = 0x00,
+  SAM_LOG_RX_TIMEOUT             = 0x01,
+  SAM_LOG_RX_ERROR               = 0x02,
+  SAM_LOG_RX_MALFORMED           = 0x03,
+  SAM_LOG_RX_LISTEN_LATE         = 0x04,
+  SAM_LOG_RX_LISTEN_FAIL         = 0x05,
+  SAM_LOG_TIMER_EVENT            = 0x06, /* not used for now */
+  SAM_LOG_TX_DONE                = 0x07,
+  SAM_LOG_TX_SCHED_LATE          = 0x08,
+  SAM_LOG_TX_SCHED_FAIL          = 0x09,
+  SAM_LOG_SYNCH_DONE             = 0x0E,
+  SAM_LOG_SYNCH_FAIL             = 0x0F,
+  SAM_LOG_SKIP_SUCCESS           = 0x10, /* how many skipped? slots_to_use */
+  SAM_LOG_RESTART_LATE           = 0x11, /* not used for now */
+  SAM_LOG_RESTART_FAIL           = 0x12, /* not used for now */
+  SAM_LOG_UNKNOWN                = 0x1E,
 };
 
 /* Header bit definitions */
@@ -32,6 +32,10 @@ enum sam_log_status {
 #define SAM_LOG_HDR_SCAN                 (1<<3)  /* RX action w/ unlimited timeout */
 #define SAM_LOG_HDR_CUSTOM_FIELDS        (1<<4)
 #define SAM_LOG_HDR_DEFAULT_SLOTS_TO_USE (1<<5)
+
+/* Bitmasks for m_hdr + status + reserved bits (first byte of every action) */
+#define CUSTOM_STATUS_BITMASK                   (SAM_LOG_UNKNOWN << 2)
+#define EXTENDED_HDR_BITMASK                    0x80
 
 /* Structure for logging statistics */
 struct sam_log_stats {
