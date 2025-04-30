@@ -70,6 +70,22 @@
             padding: 10px;
             border-radius: 4px;
             overflow: auto;
+            font-family: monospace;
+        }
+
+        .binary-view {
+            font-family: monospace;
+            line-height: 1.3;
+        }
+
+        .binary-byte {
+            color: #0066cc;
+            margin-right: 5px;
+        }
+
+        .binary-byte-divider {
+            color: #999;
+            margin: 0 2px;
         }
 
         .error {
@@ -80,6 +96,17 @@
         .debug {
             color: #5bc0de;
             font-style: italic;
+        }
+
+        .options-group {
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .options-group label {
+            margin-right: 20px;
         }
     </style>
 </head>
@@ -99,8 +126,9 @@
 
     <textarea id="input" placeholder="Paste SAM log here..."></textarea>
 
-    <div>
+    <div class="options-group">
         <label><input type="checkbox" id="show-hex-dump" checked> Show Hex Dump of Decoded Data</label>
+        <label><input type="checkbox" id="show-binary-view" checked> Show Binary View of Decoded Data</label>
         <label><input type="checkbox" id="show-debug" checked> Show Debug Info</label>
     </div>
 
@@ -225,6 +253,32 @@
                 output += hexOutput + ' | ' + asciiOutput;
             }
 
+            return output;
+        }
+
+        // Create binary view of data
+        function binaryView(data) {
+            let output = '';
+            
+            for (let i = 0; i < data.length; i++) {
+                // Start a new line every 8 bytes
+                if (i % 8 === 0) {
+                    if (i > 0) {
+                        output += '\n';
+                    }
+                    output += (i).toString(16).padStart(4, '0') + ': ';
+                }
+                
+                // Convert byte to binary representation
+                const byte = data[i];
+                const binary = byte.toString(2).padStart(8, '0');
+                
+                // Format binary with highlighting and nibble separator
+                const formattedBinary = `<span class="binary-byte">${binary.slice(0, 4)}<span class="binary-byte-divider">_</span>${binary.slice(4)}</span>`;
+                
+                output += formattedBinary + ' ';
+            }
+            
             return output;
         }
 
@@ -628,6 +682,7 @@
         function displayResults(logs) {
             const resultDiv = document.getElementById('result');
             const showHexDump = document.getElementById('show-hex-dump').checked;
+            const showBinaryView = document.getElementById('show-binary-view').checked;
             const showDebug = document.getElementById('show-debug').checked;
 
             if (logs.length === 0) {
@@ -664,6 +719,18 @@
                         <details>
                             <summary>Hex Dump of Decoded Data</summary>
                             <pre>${hexDump(log.decodedData)}</pre>
+                        </details>
+                    `;
+                }
+
+                // Show binary view if enabled
+                if (showBinaryView && log.decodedData && log.decodedData.length > 0) {
+                    html += `
+                        <details>
+                            <summary>Binary View of Decoded Data</summary>
+                            <div class="binary-view">
+                                <pre>${binaryView(log.decodedData)}</pre>
+                            </div>
                         </details>
                     `;
                 }
