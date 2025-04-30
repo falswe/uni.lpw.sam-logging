@@ -319,7 +319,7 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
                 if (hdr & SAM_LOG_HDR_CUSTOM_FIELDS) {
                     uint16_t total_custom_len;
 
-                    ring_buf_get(&log_ctx.end_actions, &total_custom_len, 2);
+                    ring_buf_get(&log_ctx.end_actions, (uint8_t *)&total_custom_len, 2);
                     ring_buf_get_finish(&log_ctx.end_custom, total_custom_len);
                     log_ctx.stats.custom_fields_dropped++;
                 }
