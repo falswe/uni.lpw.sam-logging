@@ -12,15 +12,18 @@
             line-height: 1.5;
         }
 
-        h1 {
+        h1,
+        h2,
+        h3 {
             color: #2a4d69;
         }
 
         textarea {
             width: 100%;
-            height: 100px;
+            height: 150px;
             margin: 10px 0;
             padding: 8px;
+            font-family: monospace;
         }
 
         button {
@@ -34,6 +37,24 @@
             padding: 15px;
             margin-top: 20px;
             border-radius: 4px;
+        }
+
+        .summary-log {
+            margin: 5px 0;
+            padding: 8px;
+            background-color: #f8f9fa;
+            border-left: 4px solid #2a4d69;
+            cursor: pointer;
+        }
+
+        .summary-log:hover {
+            background-color: #e9ecef;
+        }
+
+        .log-section {
+            margin-bottom: 30px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 20px;
         }
 
         table {
@@ -115,6 +136,7 @@
     <h1>SAM Log Analyzer</h1>
 
     <div>
+        <button id="load-clipboard">Load from Clipboard</button>
         <button id="load-basic">Load Basic Log</button>
         <button id="load-custom">Load Custom Data Log</button>
         <button id="load-epoch">Load Epoch Simulation Log</button>
@@ -129,7 +151,10 @@
         <label><input type="checkbox" id="show-debug" checked> Show Debug Info</label>
     </div>
 
-    <div class="result" id="result"></div>
+    <div class="result" id="result">
+        <div id="summary-section"></div>
+        <div id="detailed-results"></div>
+    </div>
 
     <script>
         // Z85 decoder with robust error handling
@@ -678,23 +703,38 @@
 
         // Display parsed results
         function displayResults(logs) {
-            const resultDiv = document.getElementById('result');
+            const resultDiv = document.getElementById('detailed-results');
+            const summaryDiv = document.getElementById('summary-section');
             const showHexDump = document.getElementById('show-hex-dump').checked;
             const showBinaryView = document.getElementById('show-binary-view').checked;
             const showDebug = document.getElementById('show-debug').checked;
 
             if (logs.length === 0) {
                 resultDiv.innerHTML = '<p>No valid logs found.</p>';
+                summaryDiv.innerHTML = '';
                 return;
             }
 
+            // Build summary section
+            let summaryHtml = '<h2>Log Summary</h2>';
+            logs.forEach((log, index) => {
+                summaryHtml += `
+                    <div class="summary-log" onclick="document.getElementById('log-section-${index}').scrollIntoView({behavior: 'smooth'})">
+                        ${log.logName} - ${log.bufferName} (Epoch ${log.epochId}): ${log.actions.length} actions
+                    </div>
+                `;
+            });
+            summaryDiv.innerHTML = summaryHtml;
+
+            // Build detailed results
             let html = '';
 
             // Display results for each log
             logs.forEach((log, logIndex) => {
                 html += `
-                    <h2>Log: ${log.logName}, Section: ${log.bufferName}, Epoch: ${log.epochId}</h2>
-                    <p><strong>Found ${log.actions.length} actions</strong></p>
+                    <div id="log-section-${logIndex}" class="log-section">
+                        <h2>Log: ${log.logName}, Section: ${log.bufferName}, Epoch: ${log.epochId}</h2>
+                        <p><strong>Found ${log.actions.length} actions</strong></p>
                 `;
 
                 // Show debug info if enabled
@@ -778,10 +818,7 @@
                     `;
                 }
 
-                // Add separator between logs
-                if (logIndex < logs.length - 1) {
-                    html += '<hr>';
-                }
+                html += `</div>`;
             });
 
             resultDiv.innerHTML = html;
@@ -792,7 +829,7 @@
             const inputArea = document.getElementById('input');
 
             // Add input change event handler
-            inputArea.addEventListener('input', function() {
+            inputArea.addEventListener('input', function () {
                 const logs = parseLog(inputArea.value);
                 displayResults(logs);
             });
@@ -820,11 +857,22 @@
 
             // Add event listener for checkbox changes
             document.querySelectorAll('.options-group input[type="checkbox"]').forEach(checkbox => {
-                checkbox.addEventListener('change', function() {
+                checkbox.addEventListener('change', function () {
                     // Re-run display with current input
                     const logs = parseLog(inputArea.value);
                     displayResults(logs);
                 });
+            });
+
+            // Add event listener for clipboard button
+            document.getElementById('load-clipboard').addEventListener('click', async function () {
+                try {
+                    const text = await navigator.clipboard.readText();
+                    inputArea.value = text;
+                    inputArea.dispatchEvent(new Event('input'));
+                } catch (err) {
+                    alert('Could not read from clipboard. Please paste manually.\n\nError: ' + err.message);
+                }
             });
 
             // Load the CUSTOM log by default
