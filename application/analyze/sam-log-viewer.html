@@ -13,7 +13,8 @@
         }
 
         h1,
-        h2 {
+        h2,
+        h3 {
             color: #2a4d69;
         }
 
@@ -30,6 +31,13 @@
             padding: 15px;
             margin-top: 20px;
             border-radius: 4px;
+        }
+
+        .debug-section {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-left: 4px solid #dc3545;
         }
 
         .summary-log {
@@ -53,6 +61,7 @@
         table {
             width: 100%;
             border-collapse: collapse;
+            margin-bottom: 15px;
         }
 
         th,
@@ -87,21 +96,6 @@
             font-family: monospace;
         }
 
-        .binary-view {
-            font-family: monospace;
-            line-height: 1.3;
-        }
-
-        .binary-byte {
-            color: #0066cc;
-            margin-right: 5px;
-        }
-
-        .binary-byte-divider {
-            color: #999;
-            margin: 0 2px;
-        }
-
         .status-rx {
             background-color: #d4edda;
         }
@@ -127,6 +121,11 @@
             cursor: pointer;
             margin-right: 10px;
         }
+
+        .byte-marker {
+            font-weight: bold;
+            color: #dc3545;
+        }
     </style>
 </head>
 
@@ -136,22 +135,51 @@
 
     <textarea id="input" placeholder="Paste SAM log here..."></textarea>
     <button class="button" id="parse-button">Parse Logs</button>
+    <button class="button" id="toggle-debug">Toggle Debug Info</button>
 
     <div class="result">
+        <div id="debug-info" class="debug-section" style="display:none;"></div>
         <div id="summary-section"></div>
         <div id="detailed-results"></div>
     </div>
 
     <script>
-        // Z85 decoder
-        function decodeZ85(encoded) {
-            if (!encoded || encoded.length === 0) return new Uint8Array(0);
-            encoded = encoded.replace(/\s+/g, "");
+        let debugMode = false;
+        const debugInfo = [];
 
-            const base85 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#";
+        // Z85 character set
+        const Z85_CHARS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#";
+
+        // Check if a string contains only valid Z85 characters
+        function isValidZ85String(str) {
+            for (let i = 0; i < str.length; i++) {
+                if (Z85_CHARS.indexOf(str[i]) === -1) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // Z85 decoder with strict validation
+        function decodeZ85(encoded) {
+            if (!encoded || encoded.length === 0) {
+                addDebugMessage("Empty Z85 input");
+                return new Uint8Array(0);
+            }
+
+            addDebugMessage(`Z85 input: ${encoded}`);
+
+            // Validate the entire string contains only Z85 characters
+            if (!isValidZ85String(encoded)) {
+                addDebugMessage("Z85 input contains invalid characters");
+                return new Uint8Array(0);
+            }
+
+            const base85 = Z85_CHARS;
             const lookup = {};
             for (let i = 0; i < base85.length; i++) lookup[base85[i]] = i;
 
+            // Get padding information from first character
             const paddingDigit = parseInt(encoded.charAt(0));
             let encodedData = encoded;
             let padding = 0;
@@ -159,31 +187,38 @@
             if (!isNaN(paddingDigit) && paddingDigit >= 1 && paddingDigit <= 4) {
                 encodedData = encoded.substring(1);
                 padding = 4 - paddingDigit;
+                addDebugMessage(`Padding digit: ${paddingDigit}, padding: ${padding}`);
+            } else {
+                addDebugMessage("No valid padding digit found");
             }
 
+            // Ensure encoded data is a multiple of 5
             if (encodedData.length % 5 !== 0) {
                 const extra = encodedData.length % 5;
                 encodedData = encodedData.substring(0, encodedData.length - extra);
+                addDebugMessage(`Truncated ${extra} chars to make multiple of 5`);
             }
 
-            if (encodedData.length === 0) return new Uint8Array(0);
+            if (encodedData.length === 0) {
+                addDebugMessage("No valid encoded data after adjustments");
+                return new Uint8Array(0);
+            }
 
+            // Calculate decoded length
             const decodedLength = Math.floor(encodedData.length * 4 / 5);
+            addDebugMessage(`Calculated decoded length: ${decodedLength} bytes`);
+
             const result = new Uint8Array(decodedLength);
 
+            // Perform decoding
             let j = 0;
             for (let i = 0; i < encodedData.length; i += 5) {
                 if (i + 4 >= encodedData.length) break;
 
-                const chars = [
-                    encodedData[i], encodedData[i + 1], encodedData[i + 2],
-                    encodedData[i + 3], encodedData[i + 4]
-                ];
-
-                if (chars.some(char => lookup[char] === undefined)) continue;
-
                 let value = 0;
-                for (let k = 0; k < 5; k++) value = value * 85 + lookup[encodedData[i + k]];
+                for (let k = 0; k < 5; k++) {
+                    value = value * 85 + lookup[encodedData[i + k]];
+                }
 
                 if (j + 3 < result.length) {
                     result[j] = (value >> 24) & 0xFF;
@@ -194,8 +229,11 @@
                 }
             }
 
+            // Apply padding if needed
             if (!isNaN(paddingDigit) && paddingDigit < 4) {
-                return result.slice(0, decodedLength - padding);
+                const finalResult = result.slice(0, decodedLength - padding);
+                addDebugMessage(`Applied padding: final decoded length = ${finalResult.length}`);
+                return finalResult;
             }
 
             return result;
@@ -250,7 +288,7 @@
             4: 'RX_LISTEN_LATE', 5: 'RX_LISTEN_FAIL', 6: 'TIMER_EVENT', 7: 'TX_DONE',
             8: 'TX_SCHED_LATE', 9: 'TX_SCHED_FAIL', 14: 'SYNCH_DONE',
             15: 'SYNCH_FAIL', 16: 'SKIP_SUCCESS', 17: 'RESTART_LATE', 18: 'RESTART_FAIL',
-            19: 'UNKNOWN'
+            30: 'UNKNOWN'
         };
 
         // Get the CSS class for a status value
@@ -264,55 +302,99 @@
 
         // Validate action header
         function isValidActionHeader(buffer, pos) {
-            if (pos >= buffer.length) return false;
+            if (pos >= buffer.length) {
+                addDebugMessage(`Position ${pos} is beyond buffer length ${buffer.length}`);
+                return false;
+            }
 
             // First byte: check m_hdr and status
             const firstByte = buffer[pos];
             const m_hdr = (firstByte & 0x80) >> 7;
             const status = firstByte & 0x1F;
 
-            // Status must be in range 0-19, and reserved bits must be 0
-            if (status > 19 || (firstByte & 0x60) !== 0) return false;
+            // Status must be in valid range
+            if (status > 30) {
+                addDebugMessage(`Invalid status: ${status} > 30`);
+                return false;
+            }
+
+            // Reserved bits must be 0
+            if ((firstByte & 0x60) !== 0) {
+                addDebugMessage(`Reserved bits not 0: ${(firstByte & 0x60).toString(2)}`);
+                return false;
+            }
 
             // If m_hdr is set, we need enough bytes for header
             if (m_hdr === 1) {
-                if (pos + 1 >= buffer.length) return false;
+                if (pos + 1 >= buffer.length) {
+                    addDebugMessage(`Not enough bytes for header`);
+                    return false;
+                }
+
                 // Check header byte - must be a reasonable value
-                if (buffer[pos + 1] > 63) return false;
+                const hdr = buffer[pos + 1];
+                if (hdr > 63) {
+                    addDebugMessage(`Invalid header byte: ${hdr} > 63`);
+                    return false;
+                }
             }
 
             return true;
         }
 
-        // Get the total length of an action (header + custom data)
+        // Get the total length of an action
         function getActionTotalLength(buffer, pos) {
             const firstByte = buffer[pos];
             const m_hdr = (firstByte & 0x80) >> 7;
             const status = firstByte & 0x1F;
 
             // If no m_hdr, just the status byte
-            if (m_hdr === 0) return 1;
+            if (m_hdr === 0) {
+                addDebugMessage(`Action at ${pos}: No extended header, size = 1`);
+                return 1;
+            }
 
             // Header byte is at position pos+1
-            if (pos + 1 >= buffer.length) return 1;
+            if (pos + 1 >= buffer.length) {
+                addDebugMessage(`Action at ${pos}: Buffer too short for header`);
+                return 1;
+            }
 
             const hdr = buffer[pos + 1];
             let size = 2; // Base size (m_hdr + header byte)
 
-            // Check for custom status bytes if status is SAM_LOG_UNKNOWN (19)
-            if (status === 19) size += 2; // 10-bit custom status
+            // Check for custom status bytes if status is SAM_LOG_UNKNOWN (30)
+            if (status === 30) {
+                size += 2; // 10-bit custom status
+                addDebugMessage(`Action at ${pos}: +2 bytes for custom status`);
+            }
 
             // Add size for other fields based on header bits
-            if (hdr & SAM_LOG_HDR.SLOT_IDX) size += 3;
-            if (hdr & SAM_LOG_HDR.SLOT_IDX_DIFF) size += 2;
-            if (hdr & SAM_LOG_HDR.SLOTS_TO_USE) size += 1;
+            if (hdr & SAM_LOG_HDR.SLOT_IDX) {
+                size += 3;
+                addDebugMessage(`Action at ${pos}: +3 bytes for SLOT_IDX`);
+            }
+
+            if (hdr & SAM_LOG_HDR.SLOT_IDX_DIFF) {
+                size += 2;
+                addDebugMessage(`Action at ${pos}: +2 bytes for SLOT_IDX_DIFF`);
+            }
+
+            if (hdr & SAM_LOG_HDR.SLOTS_TO_USE) {
+                size += 1;
+                addDebugMessage(`Action at ${pos}: +1 byte for SLOTS_TO_USE`);
+            }
 
             // Add size for custom data length field and data if present
             if (hdr & SAM_LOG_HDR.CUSTOM_FIELDS) {
                 size += 2;
+
                 if (pos + size <= buffer.length) {
                     const customLen = (buffer[pos + size - 2] << 8) | buffer[pos + size - 1];
                     size += customLen;
+                    addDebugMessage(`Action at ${pos}: +${customLen} bytes for custom data, total size = ${size}`);
+                } else {
+                    addDebugMessage(`Action at ${pos}: Buffer too short for custom data length`);
                 }
             }
 
@@ -326,6 +408,8 @@
             const m_hdr = (firstByte & 0x80) >> 7;
             const status = firstByte & 0x1F;
 
+            addDebugMessage(`Parsing action at ${startPos}: status=${status} (${STATUS_NAMES[status] || 'Unknown'}), m_hdr=${m_hdr}`);
+
             // Create action object
             const action = {
                 status,
@@ -336,8 +420,8 @@
                 startPos
             };
 
-            // Process custom status for UNKNOWN (19)
-            if (status === 19 && pos + 2 <= buffer.length) {
+            // Process custom status for UNKNOWN (30)
+            if (status === 30 && pos + 2 <= buffer.length) {
                 const highByte = buffer[pos++];
                 const lowByte = buffer[pos++];
                 action.customStatus = (highByte << 2) | ((lowByte & 0xC0) >> 6);
@@ -398,28 +482,33 @@
         }
 
         // Parse SAM log data
-        function parseLogData(buffer, logName) {
+        function parseLogData(buffer) {
             const actions = [];
             let defaultSlotsToUse = 1;
             let currentSlotIdx = 0;
             let pos = 0;
 
             if (!buffer || buffer.length === 0) {
-                return { actions, debugInfo: ["Empty buffer"] };
+                addDebugMessage("Empty buffer");
+                return { actions };
             }
 
-            // Process all valid actions in the buffer
+            addDebugMessage(`Buffer length: ${buffer.length} bytes`);
+
+            // Process all valid actions
             while (pos < buffer.length) {
                 // Check if this looks like a valid action header
                 if (!isValidActionHeader(buffer, pos)) {
+                    addDebugMessage(`Invalid header at position ${pos}, stopping parse`);
                     break;
                 }
 
-                // Determine total action length (header + custom data)
+                // Determine total action length
                 const actionLength = getActionTotalLength(buffer, pos);
 
                 // Safety check - make sure we don't overrun the buffer
                 if (pos + actionLength > buffer.length) {
+                    addDebugMessage(`Action would extend beyond buffer end, stopping parse`);
                     break;
                 }
 
@@ -428,11 +517,13 @@
 
                 // Validate the parsed action
                 if (action.slotIdx > 1000000 || action.slotsToUse > 100) {
+                    addDebugMessage(`Invalid slot values, stopping parse`);
                     break;
                 }
 
                 // Add the action
                 actions.push(action);
+                addDebugMessage(`Added action: ${action.statusName} at slot ${action.slotIdx}`);
 
                 // Update tracking for next action
                 if (action.status === 14) { // SYNCH_DONE
@@ -451,6 +542,7 @@
 
                 // Safety check for infinite loops
                 if (actions.length > 1000) {
+                    addDebugMessage("Too many actions (>1000), stopping parse");
                     break;
                 }
             }
@@ -458,78 +550,71 @@
             return { actions };
         }
 
+        // Extract Z85 encoded portion from a log line
+        function extractZ85Data(logLine) {
+            // Find the LOG[x] part
+            const logMatch = logLine.match(/LOG\[([^\]]+)\]\s+(START|END)\s+(\d+)\s+([^\s]+)/);
+
+            if (logMatch) {
+                const [_, logName, section, epochId, encodedData] = logMatch;
+                addDebugMessage(`Found log: ${logName} ${section} ${epochId}`);
+
+                // The encoded data should be the last token on the line
+                // Extract just the Z85 token and verify it contains only valid Z85 characters
+                const z85Part = encodedData;
+
+                if (isValidZ85String(z85Part)) {
+                    return {
+                        logName,
+                        section,
+                        epochId: parseInt(epochId),
+                        encodedData: z85Part
+                    };
+                } else {
+                    addDebugMessage(`Invalid Z85 data: ${z85Part}`);
+                }
+            }
+
+            return null;
+        }
+
         // Parse SAM log lines
         function parseLog(logText) {
             const logs = [];
-            // Match log patterns including Zephyr log timestamp and level format
-            const logPattern = /(?:\[\d{2}:\d{2}:\d{2}\.\d{3},\d{3}\]\s+<\w+>\s+)?sam_log:\s+LOG\[(.*?)\]\s+(START|END)\s+(\d+)\s+(.*)/;
             const lines = logText.split('\n');
 
-            // For long logs that span multiple lines
-            let longLogName = '';
-            let longLogBuffer = '';
-            let longLogBufferName = '';
-            let longLogEpochId = 0;
+            addDebugMessage(`Processing ${lines.length} lines of input`);
 
+            // Process each line
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
                 if (line === '') continue;
 
-                const match = line.match(logPattern);
-                if (match) {
-                    const [_, logName, bufferName, epochId, encodedData] = match;
+                // Look for log entries
+                if (line.includes("LOG[") && line.includes("sam_log:")) {
+                    const logInfo = extractZ85Data(line);
 
-                    // Check if this is a long log that spans multiple lines
-                    if (i + 1 < lines.length && !lines[i + 1].match(logPattern) && lines[i + 1].trim() !== '') {
-                        // This is the start of a multi-line log
-                        longLogName = logName;
-                        longLogBufferName = bufferName;
-                        longLogEpochId = parseInt(epochId);
-                        longLogBuffer = encodedData;
-
-                        // Continue appending lines until we find another LOG pattern or end of input
-                        let j = i + 1;
-                        while (j < lines.length && !lines[j].match(logPattern) && lines[j].trim() !== '') {
-                            longLogBuffer += lines[j].trim();
-                            j++;
-                        }
-
-                        // Skip the lines we just processed
-                        i = j - 1;
-
-                        // Process the complete log
+                    if (logInfo) {
                         try {
-                            const decodedData = decodeZ85(longLogBuffer);
+                            // Decode and parse the data
+                            const decodedData = decodeZ85(logInfo.encodedData);
 
                             if (decodedData && decodedData.length > 0) {
-                                const { actions } = parseLogData(decodedData, longLogName);
-                                logs.push({
-                                    logName: longLogName,
-                                    bufferName: longLogBufferName,
-                                    epochId: longLogEpochId,
-                                    actions,
-                                    decodedData
-                                });
+                                const { actions } = parseLogData(decodedData);
+
+                                if (actions.length > 0) {
+                                    logs.push({
+                                        ...logInfo,
+                                        actions,
+                                        decodedData
+                                    });
+
+                                    addDebugMessage(`Added log: ${logInfo.logName} with ${actions.length} actions`);
+                                }
                             }
                         } catch (e) {
-                            console.error("Error processing multi-line log:", e);
-                        }
-                    } else {
-                        // Regular single-line log
-                        try {
-                            const decodedData = decodeZ85(encodedData);
-                            if (decodedData && decodedData.length > 0) {
-                                const { actions } = parseLogData(decodedData, logName);
-                                logs.push({
-                                    logName,
-                                    bufferName,
-                                    epochId: parseInt(epochId),
-                                    actions,
-                                    decodedData
-                                });
-                            }
-                        } catch (e) {
-                            console.error("Error parsing log:", e);
+                            addDebugMessage(`Error processing log: ${e.message}`);
+                            console.error("Error processing log:", e);
                         }
                     }
                 }
@@ -553,10 +638,20 @@
             return bits.join(', ');
         }
 
+        // Add debug message
+        function addDebugMessage(message) {
+            debugInfo.push(message);
+        }
+
         // Display parsed results
         function displayResults(logs) {
             const resultDiv = document.getElementById('detailed-results');
             const summaryDiv = document.getElementById('summary-section');
+            const debugDiv = document.getElementById('debug-info');
+
+            // Update debug section
+            debugDiv.innerHTML = `<h3>Debug Information</h3><pre>${debugInfo.join('\n')}</pre>`;
+            debugDiv.style.display = debugMode ? 'block' : 'none';
 
             if (logs.length === 0) {
                 resultDiv.innerHTML = '<p>No valid logs found.</p>';
@@ -569,7 +664,7 @@
             logs.forEach((log, index) => {
                 summaryHtml += `
                     <div class="summary-log" onclick="document.getElementById('log-section-${index}').scrollIntoView({behavior: 'smooth'})">
-                        ${log.logName} - ${log.bufferName} (Epoch ${log.epochId}): ${log.actions.length} actions
+                        ${log.logName} - ${log.section} (Epoch ${log.epochId}): ${log.actions.length} actions
                     </div>
                 `;
             });
@@ -582,14 +677,22 @@
             logs.forEach((log, logIndex) => {
                 html += `
                     <div id="log-section-${logIndex}" class="log-section">
-                        <h2>Log: ${log.logName}, Section: ${log.bufferName}, Epoch: ${log.epochId}</h2>
+                        <h2>Log: ${log.logName}, Section: ${log.section}, Epoch: ${log.epochId}</h2>
                         <p><strong>Found ${log.actions.length} actions</strong></p>
+                `;
+
+                // Show raw encoded data
+                html += `
+                    <details ${debugMode ? 'open' : ''}>
+                        <summary>Z85 Encoded Data</summary>
+                        <pre>${log.encodedData}</pre>
+                    </details>
                 `;
 
                 // Show hex dump
                 if (log.decodedData && log.decodedData.length > 0) {
                     html += `
-                        <details>
+                        <details ${debugMode ? 'open' : ''}>
                             <summary>Hex Dump</summary>
                             <pre>${hexDump(log.decodedData)}</pre>
                         </details>
@@ -643,15 +746,28 @@
             resultDiv.innerHTML = html;
         }
 
-        // Initialize
+        // Initialize on page load
         document.addEventListener('DOMContentLoaded', function () {
+            // Clear debug info
+            debugInfo.length = 0;
+
             const parseButton = document.getElementById('parse-button');
+            const toggleDebugButton = document.getElementById('toggle-debug');
             const inputArea = document.getElementById('input');
 
             // Parse button handler
             parseButton.addEventListener('click', function () {
+                // Clear debug info
+                debugInfo.length = 0;
                 const logs = parseLog(inputArea.value);
                 displayResults(logs);
+            });
+
+            // Toggle debug mode
+            toggleDebugButton.addEventListener('click', function () {
+                debugMode = !debugMode;
+                document.getElementById('debug-info').style.display = debugMode ? 'block' : 'none';
+                displayResults(parseLog(inputArea.value));
             });
         });
     </script>
