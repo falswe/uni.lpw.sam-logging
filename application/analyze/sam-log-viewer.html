@@ -707,8 +707,11 @@
                                 <tr>
                                     <th>#</th>
                                     <th>Status</th>
+                                    <th>Custom Status</th>
+                                    <th>Header Bits</th>
                                     <th>Slot Index</th>
                                     <th>Slots To Use</th>
+                                    <th>Sets Default</th>
                                     <th>Slot Diff</th>
                                     <th>Custom Data</th>
                                 </tr>
@@ -724,8 +727,11 @@
                             <tr class="${rowClass}">
                                 <td>${index + 1}</td>
                                 <td>${action.statusName} (${action.status})</td>
+                                <td>${action.customStatus !== undefined ? action.customStatus : '-'}</td>
+                                <td>${action.hdr !== undefined ? formatHeaderBits(action.hdr) : '-'}</td>
                                 <td>${action.slotIdx !== undefined ? action.slotIdx : '-'}</td>
                                 <td>${action.slotsToUse !== undefined ? action.slotsToUse : '1'}</td>
+                                <td>${action.setsDefaultSlots ? 'Yes' : 'No'}</td>
                                 <td>${action.slotIdxDiff !== undefined ? action.slotIdxDiff : '-'}</td>
                                 <td class="custom-data">${action.customData ? action.customData.join(' ') : 'None'}</td>
                             </tr>
