@@ -344,26 +344,110 @@ int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
 
     /* Process START buffer */
     action_length = ring_buf_get_claim(&log_ctx.start_actions, &action_data, UINT32_MAX);
-    if (action_length > 0) {
-        /* Copy actions to serialize buffer */
-        memset(serialize_buf, 0, sizeof(serialize_buf));
-        if (action_length > sizeof(serialize_buf)) {
-            action_length = sizeof(serialize_buf);
-        }
-        memcpy(serialize_buf, action_data, action_length);
-        serialize_pos = action_length;
+    custom_length = ring_buf_get_claim(&log_ctx.start_custom, &custom_data, UINT32_MAX);
 
-        /* Get and append custom data */
-        custom_length = ring_buf_get_claim(&log_ctx.start_custom, &custom_data, UINT32_MAX);
-        if (custom_length > 0) {
-            if (serialize_pos + custom_length <= sizeof(serialize_buf)) {
-                memcpy(serialize_buf + serialize_pos, custom_data, custom_length);
-                serialize_pos += custom_length;
-                ring_buf_get_finish(&log_ctx.start_custom, custom_length);
-            } else {
-                LOG_WRN("Custom data buffer too large for serialize buffer");
-                ring_buf_get_finish(&log_ctx.start_custom, custom_length);
+    if (action_length > 0) {
+        /* Process actions and their custom data */
+        memset(serialize_buf, 0, sizeof(serialize_buf));
+        serialize_pos = 0;
+
+        uint32_t action_pos = 0;
+        uint32_t custom_pos = 0;
+
+        /* Process each action in the buffer */
+        while (action_pos < action_length) {
+            /* First byte contains m_hdr and status */
+            uint8_t first_byte = action_data[action_pos];
+            uint8_t m_hdr = (first_byte & 0x80) >> 7;
+            uint8_t status = first_byte & 0x1F;
+
+            /* Determine action size and if it has custom data */
+            size_t action_size = 1; /* Start with the size of the first byte */
+            uint16_t custom_data_size = 0;
+            bool has_custom_data = false;
+
+            /* If status is SAM_LOG_UNKNOWN, we have custom_status */
+            if (status == SAM_LOG_UNKNOWN) {
+                action_size += 2; /* 10-bit custom status spans 2 bytes */
             }
+
+            /* If m_hdr is set, we have extended header */
+            if (m_hdr) {
+                /* Make sure we have enough bytes to read the header */
+                if (action_pos + action_size >= action_length) {
+                    LOG_ERR("Incomplete action header at position %u", action_pos);
+                    break;
+                }
+
+                /* Read header byte */
+                uint8_t hdr = action_data[action_pos + action_size];
+                action_size += 1;
+
+                /* Check for slot_idx (3 bytes) */
+                if (hdr & SAM_LOG_HDR_SLOT_IDX) {
+                    action_size += 3;
+                }
+
+                /* Check for slot_idx_diff (2 bytes) */
+                if (hdr & SAM_LOG_HDR_SLOT_IDX_DIFF) {
+                    action_size += 2;
+                }
+
+                /* Check for slots_to_use (1 byte) */
+                if (hdr & SAM_LOG_HDR_SLOTS_TO_USE) {
+                    action_size += 1;
+                }
+
+                /* Check for custom data */
+                if (hdr & SAM_LOG_HDR_CUSTOM_FIELDS) {
+                    has_custom_data = true;
+
+                    /* Make sure we have enough bytes to read the custom data length */
+                    if (action_pos + action_size + 1 >= action_length) {
+                        LOG_ERR("Incomplete custom data length at position %u", action_pos);
+                        break;
+                    }
+
+                    /* Read custom data length (2 bytes) */
+                    custom_data_size = (action_data[action_pos + action_size] << 8) |
+                                       action_data[action_pos + action_size + 1];
+                    action_size += 2;
+                }
+            }
+
+            /* Check if we have enough room for this action and its custom data */
+            if (serialize_pos + action_size + custom_data_size > sizeof(serialize_buf)) {
+                LOG_ERR("Serialize buffer full at position %u", serialize_pos);
+                break;
+            }
+
+            /* Make sure we have a complete action */
+            if (action_pos + action_size > action_length) {
+                LOG_ERR("Incomplete action at position %u", action_pos);
+                break;
+            }
+
+            /* Copy the action to the serialize buffer */
+            memcpy(serialize_buf + serialize_pos, action_data + action_pos, action_size);
+            serialize_pos += action_size;
+
+            /* If this action has custom data, copy it */
+            if (has_custom_data && custom_data_size > 0) {
+                /* Make sure we have enough custom data */
+                if (custom_pos + custom_data_size > custom_length) {
+                    LOG_ERR("Not enough custom data: need %u, have %u", custom_data_size,
+                            custom_length - custom_pos);
+                    break;
+                }
+
+                /* Copy the custom data after the action */
+                memcpy(serialize_buf + serialize_pos, custom_data + custom_pos, custom_data_size);
+                serialize_pos += custom_data_size;
+                custom_pos += custom_data_size;
+            }
+
+            /* Move to the next action */
+            action_pos += action_size;
         }
 
         /* Encode using Z85 */
@@ -376,34 +460,117 @@ int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
             }
         }
 
-        /* Free the claimed action data */
+        /* Free the claimed data */
         ring_buf_get_finish(&log_ctx.start_actions, action_length);
+        ring_buf_get_finish(&log_ctx.start_custom, custom_length);
     }
 
     /* Process END buffer */
-    serialize_pos = 0;
-
     action_length = ring_buf_get_claim(&log_ctx.end_actions, &action_data, UINT32_MAX);
-    if (action_length > 0) {
-        /* Copy actions to serialize buffer */
-        memset(serialize_buf, 0, sizeof(serialize_buf));
-        if (action_length > sizeof(serialize_buf)) {
-            action_length = sizeof(serialize_buf);
-        }
-        memcpy(serialize_buf, action_data, action_length);
-        serialize_pos = action_length;
+    custom_length = ring_buf_get_claim(&log_ctx.end_custom, &custom_data, UINT32_MAX);
 
-        /* Get and append custom data */
-        custom_length = ring_buf_get_claim(&log_ctx.end_custom, &custom_data, UINT32_MAX);
-        if (custom_length > 0) {
-            if (serialize_pos + custom_length <= sizeof(serialize_buf)) {
-                memcpy(serialize_buf + serialize_pos, custom_data, custom_length);
-                serialize_pos += custom_length;
-                ring_buf_get_finish(&log_ctx.end_custom, custom_length);
-            } else {
-                LOG_WRN("Custom data buffer too large for serialize buffer");
-                ring_buf_get_finish(&log_ctx.end_custom, custom_length);
+    if (action_length > 0) {
+        /* Process actions and their custom data */
+        memset(serialize_buf, 0, sizeof(serialize_buf));
+        serialize_pos = 0;
+
+        uint32_t action_pos = 0;
+        uint32_t custom_pos = 0;
+
+        /* Process each action in the buffer */
+        while (action_pos < action_length) {
+            /* First byte contains m_hdr and status */
+            uint8_t first_byte = action_data[action_pos];
+            uint8_t m_hdr = (first_byte & 0x80) >> 7;
+            uint8_t status = first_byte & 0x1F;
+
+            /* Determine action size and if it has custom data */
+            size_t action_size = 1; /* Start with the size of the first byte */
+            uint16_t custom_data_size = 0;
+            bool has_custom_data = false;
+
+            /* If status is SAM_LOG_UNKNOWN, we have custom_status */
+            if (status == SAM_LOG_UNKNOWN) {
+                action_size += 2; /* 10-bit custom status spans 2 bytes */
             }
+
+            /* If m_hdr is set, we have extended header */
+            if (m_hdr) {
+                /* Make sure we have enough bytes to read the header */
+                if (action_pos + action_size >= action_length) {
+                    LOG_ERR("Incomplete action header at position %u", action_pos);
+                    break;
+                }
+
+                /* Read header byte */
+                uint8_t hdr = action_data[action_pos + action_size];
+                action_size += 1;
+
+                /* Check for slot_idx (3 bytes) */
+                if (hdr & SAM_LOG_HDR_SLOT_IDX) {
+                    action_size += 3;
+                }
+
+                /* Check for slot_idx_diff (2 bytes) */
+                if (hdr & SAM_LOG_HDR_SLOT_IDX_DIFF) {
+                    action_size += 2;
+                }
+
+                /* Check for slots_to_use (1 byte) */
+                if (hdr & SAM_LOG_HDR_SLOTS_TO_USE) {
+                    action_size += 1;
+                }
+
+                /* Check for custom data */
+                if (hdr & SAM_LOG_HDR_CUSTOM_FIELDS) {
+                    has_custom_data = true;
+
+                    /* Make sure we have enough bytes to read the custom data length */
+                    if (action_pos + action_size + 1 >= action_length) {
+                        LOG_ERR("Incomplete custom data length at position %u", action_pos);
+                        break;
+                    }
+
+                    /* Read custom data length (2 bytes) */
+                    custom_data_size = (action_data[action_pos + action_size] << 8) |
+                                       action_data[action_pos + action_size + 1];
+                    action_size += 2;
+                }
+            }
+
+            /* Check if we have enough room for this action and its custom data */
+            if (serialize_pos + action_size + custom_data_size > sizeof(serialize_buf)) {
+                LOG_ERR("Serialize buffer full at position %u", serialize_pos);
+                break;
+            }
+
+            /* Make sure we have a complete action */
+            if (action_pos + action_size > action_length) {
+                LOG_ERR("Incomplete action at position %u", action_pos);
+                break;
+            }
+
+            /* Copy the action to the serialize buffer */
+            memcpy(serialize_buf + serialize_pos, action_data + action_pos, action_size);
+            serialize_pos += action_size;
+
+            /* If this action has custom data, copy it */
+            if (has_custom_data && custom_data_size > 0) {
+                /* Make sure we have enough custom data */
+                if (custom_pos + custom_data_size > custom_length) {
+                    LOG_ERR("Not enough custom data: need %u, have %u", custom_data_size,
+                            custom_length - custom_pos);
+                    break;
+                }
+
+                /* Copy the custom data after the action */
+                memcpy(serialize_buf + serialize_pos, custom_data + custom_pos, custom_data_size);
+                serialize_pos += custom_data_size;
+                custom_pos += custom_data_size;
+            }
+
+            /* Move to the next action */
+            action_pos += action_size;
         }
 
         /* Encode using Z85 */
@@ -416,8 +583,9 @@ int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
             }
         }
 
-        /* Free the claimed action data */
+        /* Free the claimed data */
         ring_buf_get_finish(&log_ctx.end_actions, action_length);
+        ring_buf_get_finish(&log_ctx.end_custom, custom_length);
     }
 
     /* Log statistics before resetting */
