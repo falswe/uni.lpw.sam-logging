@@ -487,17 +487,21 @@ int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
                 custom_pos += custom_data_size;
             }
 
-            LOG_DBG("Final buffer contents (%u bytes):", serialize_pos);
-            for (size_t i = 0; i < serialize_pos; i++) {
-                LOG_DBG("  [%3zu] 0x%02x", i, serialize_buf[i]);
-            }
-
             /* Move to the next action */
             action_pos += action_size;
         }
 
+        /* Zero out the encoded buffer completely before use */
+        memset(encoded, 0, sizeof(encoded));
+
         /* Encode using Z85 */
         encoded_len = Z85_encode_with_padding((char *)serialize_buf, encoded, serialize_pos);
+
+        /* Ensure NULL termination of the encoded string */
+        if (encoded_len > 0 && encoded_len < sizeof(encoded)) {
+            encoded[encoded_len] = '\0';
+        }
+
         if (encoded_len > 0) {
             /* Print the log */
             LOG_INF("LOG[%s] START %u %s", log_name, epoch_id, encoded);
@@ -615,17 +619,21 @@ int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
                 custom_pos += custom_data_size;
             }
 
-            LOG_DBG("Final buffer contents (%u bytes):", serialize_pos);
-            for (size_t i = 0; i < serialize_pos; i++) {
-                LOG_DBG("  [%3zu] 0x%02x", i, serialize_buf[i]);
-            }
-
             /* Move to the next action */
             action_pos += action_size;
         }
 
+        /* Zero out the encoded buffer completely before use */
+        memset(encoded, 0, sizeof(encoded));
+
         /* Encode using Z85 */
         encoded_len = Z85_encode_with_padding((char *)serialize_buf, encoded, serialize_pos);
+
+        /* Ensure NULL termination of the encoded string */
+        if (encoded_len > 0 && encoded_len < sizeof(encoded)) {
+            encoded[encoded_len] = '\0';
+        }
+
         if (encoded_len > 0) {
             /* Print the log */
             LOG_INF("LOG[%s] END %u %s", log_name, epoch_id, encoded);

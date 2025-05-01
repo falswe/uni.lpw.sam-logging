@@ -45,6 +45,11 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Add more detailed debugging
+    printf("Encoded Z85 string (length %zu):\n%s\n", encoded_len, encoded);
+    printf("Padding digit: %c (value: %d)\n", encoded[0], encoded[0] - '0');
+    printf("Calculated maximum decoded size: %zu bytes\n", max_decoded_size);
+
     // Allocate buffer for decoded data
     unsigned char* decoded = (unsigned char*)malloc(max_decoded_size);
     if (!decoded) {

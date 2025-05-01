@@ -230,14 +230,17 @@
             }
 
             // Apply padding if needed
-            if (!isNaN(paddingDigit) && paddingDigit < 4) {
-                // Calculate the exact number of full 4-byte chunks
-                const fullChunks = Math.floor((encodedData.length * 4) / 5);
-                // Add the significant bytes from the final chunk
-                const finalLength = (fullChunks - 1) * 4 + paddingDigit;
+            if (!isNaN(paddingDigit) && paddingDigit >= 1 && paddingDigit <= 4) {
+                // Calculate based on complete 5-character groups
+                const numFullChunks = Math.floor(encodedData.length / 5);
+
+                // Calculate final output size:
+                // (numFullChunks - 1) * 4 = bytes from complete chunks except the last one
+                // + paddingDigit = significant bytes from the last chunk
+                const finalLength = (numFullChunks - 1) * 4 + paddingDigit;
 
                 const finalResult = result.slice(0, finalLength);
-                addDebugMessage(`Applied padding: final decoded length = ${finalResult.length}`);
+                addDebugMessage(`Applied padding correctly: output length = ${finalLength}`);
                 return finalResult;
             }
 
