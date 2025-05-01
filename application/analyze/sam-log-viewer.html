@@ -231,7 +231,12 @@
 
             // Apply padding if needed
             if (!isNaN(paddingDigit) && paddingDigit < 4) {
-                const finalResult = result.slice(0, decodedLength - padding);
+                // Calculate the exact number of full 4-byte chunks
+                const fullChunks = Math.floor((encodedData.length * 4) / 5);
+                // Add the significant bytes from the final chunk
+                const finalLength = (fullChunks - 1) * 4 + paddingDigit;
+
+                const finalResult = result.slice(0, finalLength);
                 addDebugMessage(`Applied padding: final decoded length = ${finalResult.length}`);
                 return finalResult;
             }

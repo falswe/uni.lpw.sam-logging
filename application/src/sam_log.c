@@ -487,6 +487,11 @@ int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
                 custom_pos += custom_data_size;
             }
 
+            LOG_DBG("Final buffer contents (%u bytes):", serialize_pos);
+            for (size_t i = 0; i < serialize_pos; i++) {
+                LOG_DBG("  [%3zu] 0x%02x", i, serialize_buf[i]);
+            }
+
             /* Move to the next action */
             action_pos += action_size;
         }
@@ -608,6 +613,11 @@ int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
                 memcpy(serialize_buf + serialize_pos, custom_data + custom_pos, custom_data_size);
                 serialize_pos += custom_data_size;
                 custom_pos += custom_data_size;
+            }
+
+            LOG_DBG("Final buffer contents (%u bytes):", serialize_pos);
+            for (size_t i = 0; i < serialize_pos; i++) {
+                LOG_DBG("  [%3zu] 0x%02x", i, serialize_buf[i]);
             }
 
             /* Move to the next action */

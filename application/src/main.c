@@ -190,9 +190,9 @@ int main(void) {
     showcase_epoch_simulation();
     k_sleep(K_MSEC(100));
 
-    /* Showcase overflow handling */
-    showcase_overflow_handling();
-    k_sleep(K_MSEC(100));
+    // /* Showcase overflow handling */
+    // showcase_overflow_handling();
+    // k_sleep(K_MSEC(100));
 
     LOG_INF("Showcase complete!");
 
