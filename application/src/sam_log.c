@@ -12,7 +12,7 @@ LOG_MODULE_REGISTER(sam_log, CONFIG_LOG_DEFAULT_LEVEL);
 /* Configuration */
 #define SAM_LOG_ACTIONS_BUF_SIZE 512
 #define SAM_LOG_CUSTOM_BUF_SIZE 512
-#define SAM_LOG_SERIALIZE_BUF_SIZE 8192
+#define SAM_LOG_SERIALIZE_BUF_SIZE 1024
 
 /* Bit masks for first byte */
 #define EXTENDED_HDR_BITMASK 0x80
@@ -20,33 +20,32 @@ LOG_MODULE_REGISTER(sam_log, CONFIG_LOG_DEFAULT_LEVEL);
 #define CUSTOM_STATUS_VALUE (SAM_LOG_UNKNOWN)
 
 /* Define bit field sizes according to the specification */
-#define SAM_LOG_BIT_SIZE_M_HDR 1             /* 1 bit for m_hdr */
-#define SAM_LOG_BIT_SIZE_STATUS 5            /* 5 bits for status */
-#define SAM_LOG_BIT_SIZE_CUSTOM_STATUS 10    /* 10 bits for custom_status */
-#define SAM_LOG_BIT_SIZE_HDR 8               /* 8 bits for header */
-#define SAM_LOG_BIT_SIZE_SLOT_IDX 24         /* 24 bits for slot_idx */
-#define SAM_LOG_BIT_SIZE_SLOT_IDX_DIFF 16    /* 16 bits for slot_idx_diff */
-#define SAM_LOG_BIT_SIZE_SLOTS_TO_USE 8      /* 8 bits for slots_to_use */
-#define SAM_LOG_BIT_SIZE_TOTAL_CUSTOM_LEN 16 /* 16 bits for total_custom_len */
+#define SAM_LOG_BIT_SIZE_M_HDR 1
+#define SAM_LOG_BIT_SIZE_STATUS 5
+#define SAM_LOG_BIT_SIZE_CUSTOM_STATUS 10
+#define SAM_LOG_BIT_SIZE_HDR 8
+#define SAM_LOG_BIT_SIZE_SLOT_IDX 24
+#define SAM_LOG_BIT_SIZE_SLOT_IDX_DIFF 16
+#define SAM_LOG_BIT_SIZE_SLOTS_TO_USE 8
+#define SAM_LOG_BIT_SIZE_TOTAL_CUSTOM_LEN 16
 
 /* Structure representing a serialized action */
 struct sam_log_packed_action {
-    uint8_t m_hdr : SAM_LOG_BIT_SIZE_M_HDR;                  /* 1 if extended header is present */
-    uint8_t status : SAM_LOG_BIT_SIZE_STATUS;                /* Action result status */
-    uint16_t custom_status : SAM_LOG_BIT_SIZE_CUSTOM_STATUS; /* Custom status as per spec */
-    uint8_t hdr : SAM_LOG_BIT_SIZE_HDR;                      /* Standard header bitmask */
-    uint32_t slot_idx : SAM_LOG_BIT_SIZE_SLOT_IDX;           /* Slot index for the action */
-    int16_t slot_idx_diff : SAM_LOG_BIT_SIZE_SLOT_IDX_DIFF;  /* Difference from expected slot */
-    uint8_t slots_to_use : SAM_LOG_BIT_SIZE_SLOTS_TO_USE; /* Number of slots used by the action */
-    uint16_t total_custom_len
-        : SAM_LOG_BIT_SIZE_TOTAL_CUSTOM_LEN; /* Total length of custom fields */
+    uint8_t m_hdr : SAM_LOG_BIT_SIZE_M_HDR;
+    uint8_t status : SAM_LOG_BIT_SIZE_STATUS;
+    uint16_t custom_status : SAM_LOG_BIT_SIZE_CUSTOM_STATUS;
+    uint8_t hdr : SAM_LOG_BIT_SIZE_HDR;
+    uint32_t slot_idx : SAM_LOG_BIT_SIZE_SLOT_IDX;
+    int16_t slot_idx_diff : SAM_LOG_BIT_SIZE_SLOT_IDX_DIFF;
+    uint8_t slots_to_use : SAM_LOG_BIT_SIZE_SLOTS_TO_USE;
+    uint16_t total_custom_len : SAM_LOG_BIT_SIZE_TOTAL_CUSTOM_LEN;
 } __attribute__((packed));
 
 /* Context structure */
 struct sam_log_ctx {
     struct ring_buf start_actions;
-    struct ring_buf end_actions;
     struct ring_buf start_custom;
+    struct ring_buf end_actions;
     struct ring_buf end_custom;
     bool logging_enabled;
     uint8_t default_slots_to_use;
@@ -142,8 +141,8 @@ static size_t serialize_action(const struct sam_log_packed_action *action, uint8
 int sam_log_init(void) {
     /* Initialize ring buffers */
     ring_buf_init(&log_ctx.start_actions, sizeof(start_actions_buf), start_actions_buf);
-    ring_buf_init(&log_ctx.end_actions, sizeof(end_actions_buf), end_actions_buf);
     ring_buf_init(&log_ctx.start_custom, sizeof(start_custom_buf), start_custom_buf);
+    ring_buf_init(&log_ctx.end_actions, sizeof(end_actions_buf), end_actions_buf);
     ring_buf_init(&log_ctx.end_custom, sizeof(end_custom_buf), end_custom_buf);
 
     /* Initialize context */
