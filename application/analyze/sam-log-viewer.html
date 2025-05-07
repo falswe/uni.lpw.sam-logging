@@ -264,8 +264,8 @@
                 // Bit masks
                 MASKS: {
                     M_HDR: 0x80,
-                    STATUS: 0x1F,
-                    RESERVED: 0x60
+                    STATUS: 0x7C,
+                    CUSTOM_STATUS_HIGH: 0x03
                 }
             };
 
@@ -454,17 +454,11 @@
                 // First byte contains m_hdr and status
                 const firstByte = buffer[pos];
                 const m_hdr = (firstByte & CONSTANTS.MASKS.M_HDR) >> 7;
-                const status = firstByte & CONSTANTS.MASKS.STATUS;
-                const reserved = firstByte & CONSTANTS.MASKS.RESERVED;
+                const status = (firstByte & CONSTANTS.MASKS.STATUS) >> 2;
 
-                // Validate status and reserved bits
+                // Validate status
                 if (status > 30) {
                     debug(`Invalid status value: ${status}`);
-                    return false;
-                }
-
-                if (reserved !== 0) {
-                    debug(`Reserved bits not zero: ${reserved.toString(2)}`);
                     return false;
                 }
 
@@ -475,7 +469,20 @@
                         return false;
                     }
 
-                    const hdr = buffer[pos + 1];
+                    // If status is UNKNOWN, we expect custom status which takes another byte
+                    if (status === CONSTANTS.UNKNOWN_STATUS && pos + 2 >= buffer.length) {
+                        debug(`Not enough bytes for custom status`);
+                        return false;
+                    }
+
+                    const hdrPos = (status === CONSTANTS.UNKNOWN_STATUS) ? pos + 2 : pos + 1;
+
+                    if (hdrPos >= buffer.length) {
+                        debug(`Not enough bytes for header`);
+                        return false;
+                    }
+
+                    const hdr = buffer[hdrPos];
                     if (hdr > 63) {
                         debug(`Invalid header value: ${hdr}`);
                         return false;
@@ -491,26 +498,27 @@
             function getActionLength(buffer, pos) {
                 const firstByte = buffer[pos];
                 const m_hdr = (firstByte & CONSTANTS.MASKS.M_HDR) >> 7;
-                const status = firstByte & CONSTANTS.MASKS.STATUS;
+                const status = (firstByte & CONSTANTS.MASKS.STATUS) >> 2;
 
                 // Simple action with no extended header
                 if (m_hdr === 0) {
                     return 1;
                 }
 
-                // Extended header
-                if (pos + 1 >= buffer.length) {
-                    debug(`Buffer too short for extended header at ${pos}`);
-                    return 1;
-                }
-
-                const hdr = buffer[pos + 1];
-                let size = 2;  // Base size with header
-
-                // Add size for custom status
+                // For custom status, we need an extra byte
+                let offset = 1;
                 if (status === CONSTANTS.UNKNOWN_STATUS) {
-                    size += 2;
+                    offset = 2;
                 }
+
+                // Extended header
+                if (pos + offset >= buffer.length) {
+                    debug(`Buffer too short for extended header at ${pos}`);
+                    return offset;
+                }
+
+                const hdr = buffer[pos + offset];
+                let size = offset + 1;  // Base size with header
 
                 // Add size for each field based on header bits
                 if (hdr & CONSTANTS.HEADER_FLAGS.SLOT_IDX) {
@@ -549,7 +557,7 @@
                 // Read first byte: m_hdr and status
                 const firstByte = buffer[pos++];
                 const m_hdr = (firstByte & CONSTANTS.MASKS.M_HDR) >> 7;
-                const status = firstByte & CONSTANTS.MASKS.STATUS;
+                const status = (firstByte & CONSTANTS.MASKS.STATUS) >> 2;
 
                 // Create base action object
                 const action = {
@@ -560,11 +568,16 @@
                 };
 
                 // Process custom status if present
-                if (status === CONSTANTS.UNKNOWN_STATUS && pos + 2 <= buffer.length) {
-                    const high = buffer[pos++];
-                    const low = buffer[pos++];
-                    action.customStatus = (high << 2) | ((low & 0xC0) >> 6);
-                    debug(`Custom status: ${action.customStatus}`);
+                if (status === CONSTANTS.UNKNOWN_STATUS) {
+                    if (pos < buffer.length) {
+                        // Get high 2 bits from first byte (bits 0-1) and low 8 bits from second byte
+                        const highBits = firstByte & CONSTANTS.MASKS.CUSTOM_STATUS_HIGH;
+                        const lowBits = buffer[pos++];
+                        action.customStatus = (highBits << 8) | lowBits;
+                        debug(`Custom status: ${action.customStatus}`);
+                    } else {
+                        debug(`Buffer too short for custom status`);
+                    }
                 }
 
                 // Process extended header if present

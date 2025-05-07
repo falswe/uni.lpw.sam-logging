@@ -16,7 +16,8 @@ LOG_MODULE_REGISTER(sam_log, CONFIG_LOG_DEFAULT_LEVEL);
 
 /* Bit masks for first byte */
 #define EXTENDED_HDR_BITMASK 0x80
-#define STATUS_BITMASK 0x1F
+#define STATUS_BITMASK 0x7C
+#define CUSTOM_STATUS_HIGH_BITMASK 0x03
 #define CUSTOM_STATUS_VALUE (SAM_LOG_UNKNOWN)
 
 /* Define bit field sizes according to the specification */
@@ -74,21 +75,31 @@ static size_t serialize_action(const struct sam_log_packed_action *action, uint8
         return 0;
     }
 
-    /* First byte: m_hdr and status */
-    // TODO: 2 reserved bits placed between status and m_hdr - let's have more aggressive packing.
-    // status should be placed after m_hdr directly, so custom_status can possibly fit.
-    buf[pos++] = ((action->m_hdr & 0x01) << 7) | (action->status & STATUS_BITMASK);
+    /* Check if we need to store custom status */
+    bool has_custom_status = (action->status == CUSTOM_STATUS_VALUE);
 
-    /* Custom status if needed */
-    // TODO: let's place custom status in the remaining two bits of m_hdr and status and a new byte
-    if (action->status == CUSTOM_STATUS_VALUE) {
-        if (pos + 2 > bufsize) {
+    /*
+     * First byte:
+     * - m_hdr: 1 bit (MSB)
+     * - status: 5 bits (next 5 bits)
+     * - custom_status (MSB): 2 bits (LSB of first byte, only when status == CUSTOM_STATUS_VALUE)
+     */
+    if (has_custom_status) {
+        /* First 2 bits of custom_status go into first byte's LSBs */
+        uint16_t custom_status = action->custom_status & 0x3FF; /* 10-bit mask */
+        buf[pos++] = ((action->m_hdr & 0x01) << 7) | ((action->status & 0x1F) << 2) |
+                     ((custom_status >> 8) & 0x03);
+
+        /* Make sure we have space for the second byte */
+        if (pos + 1 > bufsize) {
             return 0;
         }
 
-        uint16_t custom_status = action->custom_status & 0x3FF; /* 10-bit mask */
-        buf[pos++] = (custom_status >> 2) & 0xFF;               /* Upper 8 bits */
-        buf[pos++] = ((custom_status & 0x03) << 6) & 0xC0;      /* Lower 2 bits */
+        /* Remaining 8 bits of custom_status go into second byte */
+        buf[pos++] = custom_status & 0xFF;
+    } else {
+        /* Regular status without custom status */
+        buf[pos++] = ((action->m_hdr & 0x01) << 7) | ((action->status & 0x1F) << 2);
     }
 
     /* Extended header fields */
@@ -217,13 +228,17 @@ static void make_room_in_buffer(struct ring_buf *action_buf, struct ring_buf *cu
             break;
         }
 
+        /* Get m_hdr and status from first byte */
+        uint8_t m_hdr = (first_byte & EXTENDED_HDR_BITMASK) >> 7;
+        uint8_t status = (first_byte & STATUS_BITMASK) >> 2;
+
         /* Handle custom status if present */
-        if ((first_byte & STATUS_BITMASK) == CUSTOM_STATUS_VALUE) {
-            ring_buf_get(action_buf, NULL, 2); /* Skip custom status bytes */
+        if (status == CUSTOM_STATUS_VALUE) {
+            ring_buf_get(action_buf, NULL, 1); /* Skip custom status low byte */
         }
 
         /* Handle extended header if present */
-        if (first_byte & EXTENDED_HDR_BITMASK) {
+        if (m_hdr) {
             uint8_t hdr;
 
             if (ring_buf_get(action_buf, &hdr, 1) < 1) {
@@ -404,7 +419,7 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
         /* Get first byte to determine action type */
         uint8_t first_byte = action_data[action_pos];
         uint8_t m_hdr = (first_byte & EXTENDED_HDR_BITMASK) >> 7;
-        uint8_t status = first_byte & STATUS_BITMASK;
+        uint8_t status = (first_byte & STATUS_BITMASK) >> 2;
 
         /* Determine action size */
         size_t action_size = 1; /* Start with first byte */
@@ -413,7 +428,7 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
 
         /* Handle custom status */
         if (status == CUSTOM_STATUS_VALUE) {
-            action_size += 2;
+            action_size += 1;
         }
 
         /* Process extended header */
