@@ -16,7 +16,8 @@ LOG_MODULE_REGISTER(sam_log, CONFIG_LOG_DEFAULT_LEVEL);
 
 /* Bit masks for first byte */
 #define EXTENDED_HDR_BITMASK 0x80
-#define STATUS_BITMASK 0x1F
+#define STATUS_BITMASK 0x7C
+#define CUSTOM_STATUS_HIGH_BITMASK 0x03
 #define CUSTOM_STATUS_VALUE (SAM_LOG_UNKNOWN)
 
 /* Define bit field sizes according to the specification */
@@ -74,21 +75,31 @@ static size_t serialize_action(const struct sam_log_packed_action *action, uint8
         return 0;
     }
 
-    /* First byte: m_hdr and status */
-    // TODO: 2 reserved bits placed between status and m_hdr - let's have more aggressive packing.
-    // status should be placed after m_hdr directly, so custom_status can possibly fit.
-    buf[pos++] = ((action->m_hdr & 0x01) << 7) | (action->status & STATUS_BITMASK);
+    /* Check if we need to store custom status */
+    bool has_custom_status = (action->status == CUSTOM_STATUS_VALUE);
 
-    /* Custom status if needed */
-    // TODO: let's place custom status in the remaining two bits of m_hdr and status and a new byte
-    if (action->status == CUSTOM_STATUS_VALUE) {
-        if (pos + 2 > bufsize) {
+    /*
+     * First byte:
+     * - m_hdr: 1 bit (MSB)
+     * - status: 5 bits (next 5 bits)
+     * - custom_status (MSB): 2 bits (LSB of first byte, only when status == CUSTOM_STATUS_VALUE)
+     */
+    if (has_custom_status) {
+        /* First 2 bits of custom_status go into first byte's LSBs */
+        uint16_t custom_status = action->custom_status & 0x3FF; /* 10-bit mask */
+        buf[pos++] = ((action->m_hdr & 0x01) << 7) | ((action->status & 0x1F) << 2) |
+                     ((custom_status >> 8) & 0x03);
+
+        /* Make sure we have space for the second byte */
+        if (pos + 1 > bufsize) {
             return 0;
         }
 
-        uint16_t custom_status = action->custom_status & 0x3FF; /* 10-bit mask */
-        buf[pos++] = (custom_status >> 2) & 0xFF;               /* Upper 8 bits */
-        buf[pos++] = ((custom_status & 0x03) << 6) & 0xC0;      /* Lower 2 bits */
+        /* Remaining 8 bits of custom_status go into second byte */
+        buf[pos++] = custom_status & 0xFF;
+    } else {
+        /* Regular status without custom status */
+        buf[pos++] = ((action->m_hdr & 0x01) << 7) | ((action->status & 0x1F) << 2);
     }
 
     /* Extended header fields */
@@ -217,13 +228,17 @@ static void make_room_in_buffer(struct ring_buf *action_buf, struct ring_buf *cu
             break;
         }
 
+        /* Get m_hdr and status from first byte */
+        uint8_t m_hdr = (first_byte & EXTENDED_HDR_BITMASK) >> 7;
+        uint8_t status = (first_byte & STATUS_BITMASK) >> 2;
+
         /* Handle custom status if present */
-        if ((first_byte & STATUS_BITMASK) == CUSTOM_STATUS_VALUE) {
-            ring_buf_get(action_buf, NULL, 2); /* Skip custom status bytes */
+        if (status == CUSTOM_STATUS_VALUE) {
+            ring_buf_get(action_buf, NULL, 1); /* Skip custom status low byte */
         }
 
         /* Handle extended header if present */
-        if (first_byte & EXTENDED_HDR_BITMASK) {
+        if (m_hdr) {
             uint8_t hdr;
 
             if (ring_buf_get(action_buf, &hdr, 1) < 1) {
@@ -384,48 +399,103 @@ int sam_log_get_stats(struct sam_log_stats *stats) {
 /* Process actions from a buffer and serialize them */
 static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custom_buf,
                              uint8_t *out_buf, size_t out_size) {
-    uint8_t *action_data, *custom_data;
-    uint32_t action_length, custom_length;
+    /* Maximum size of an action header */
+    const size_t MAX_ACTION_HEADER_SIZE = 11;
+
+    /* Buffer to hold action header for processing */
+    uint8_t action_buffer[MAX_ACTION_HEADER_SIZE];
+    size_t action_buffer_filled = 0;
+
+    /* Output buffer position */
     size_t serialize_pos = 0;
 
-    /* Get all data from the buffers */
-    action_length = ring_buf_get_claim(action_buf, &action_data, UINT32_MAX);
-    custom_length = ring_buf_get_claim(custom_buf, &custom_data, UINT32_MAX);
+    /* Process actions until buffer is empty or output is full */
+    while (serialize_pos < out_size) {
+        /* Fill sliding window buffer with more data if needed */
+        if (action_buffer_filled < MAX_ACTION_HEADER_SIZE) {
+            size_t bytes_needed = MAX_ACTION_HEADER_SIZE - action_buffer_filled;
+            size_t bytes_read =
+                ring_buf_get(action_buf, action_buffer + action_buffer_filled, bytes_needed);
 
-    if (action_length == 0) {
-        return 0;
-    }
-
-    uint32_t action_pos = 0;
-    uint32_t custom_pos = 0;
-
-    /* Process each action */
-    while (action_pos < action_length) {
-        /* Get first byte to determine action type */
-        uint8_t first_byte = action_data[action_pos];
-        uint8_t m_hdr = (first_byte & EXTENDED_HDR_BITMASK) >> 7;
-        uint8_t status = first_byte & STATUS_BITMASK;
-
-        /* Determine action size */
-        size_t action_size = 1; /* Start with first byte */
-        uint16_t custom_data_size = 0;
-        bool has_custom_data = false;
-
-        /* Handle custom status */
-        if (status == CUSTOM_STATUS_VALUE) {
-            action_size += 2;
-        }
-
-        /* Process extended header */
-        if (m_hdr) {
-            if (action_pos + action_size >= action_length) {
+            if (bytes_read == 0 && action_buffer_filled == 0) {
+                /* No more data */
                 break;
             }
 
-            uint8_t hdr = action_data[action_pos + action_size];
+            action_buffer_filled += bytes_read;
+        }
+
+        /* Need at least one byte to continue */
+        if (action_buffer_filled < 1) {
+            break;
+        }
+
+        /* Parse first byte to get action type */
+        uint8_t first_byte = action_buffer[0];
+        uint8_t m_hdr = (first_byte & EXTENDED_HDR_BITMASK) >> 7;
+        uint8_t status = (first_byte & STATUS_BITMASK) >> 2;
+
+        /* Calculate minimum bytes needed for header */
+        size_t min_required_size = 1;
+
+        if (status == CUSTOM_STATUS_VALUE) {
+            min_required_size += 1;
+        }
+
+        if (m_hdr) {
+            min_required_size += 1;
+
+            if (action_buffer_filled < min_required_size) {
+                continue;
+            }
+
+            size_t hdr_pos = 1;
+            if (status == CUSTOM_STATUS_VALUE) {
+                hdr_pos += 1;
+            }
+
+            uint8_t hdr = action_buffer[hdr_pos];
+
+            if (hdr & SAM_LOG_HDR_SLOT_IDX) {
+                min_required_size += 3;
+            }
+
+            if (hdr & SAM_LOG_HDR_SLOT_IDX_DIFF) {
+                min_required_size += 2;
+            }
+
+            if (hdr & SAM_LOG_HDR_SLOTS_TO_USE) {
+                min_required_size += 1;
+            }
+
+            if (hdr & SAM_LOG_HDR_CUSTOM_FIELDS) {
+                min_required_size += 2;
+            }
+        }
+
+        /* Check buffer capacity */
+        if (min_required_size > MAX_ACTION_HEADER_SIZE) {
+            break;
+        }
+
+        /* Wait for more data if needed */
+        if (action_buffer_filled < min_required_size) {
+            continue;
+        }
+
+        /* Parse complete action header */
+        size_t action_size = 1;
+        size_t custom_data_size = 0;
+        bool has_custom_data = false;
+
+        if (status == CUSTOM_STATUS_VALUE) {
+            action_size += 1;
+        }
+
+        if (m_hdr) {
+            uint8_t hdr = action_buffer[action_size];
             action_size += 1;
 
-            /* Calculate size based on header fields */
             if (hdr & SAM_LOG_HDR_SLOT_IDX) {
                 action_size += 3;
             }
@@ -440,50 +510,41 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
 
             if (hdr & SAM_LOG_HDR_CUSTOM_FIELDS) {
                 has_custom_data = true;
-
-                if (action_pos + action_size + 1 >= action_length) {
-                    break;
-                }
-
-                custom_data_size = (action_data[action_pos + action_size] << 8) |
-                                   action_data[action_pos + action_size + 1];
+                custom_data_size =
+                    (action_buffer[action_size] << 8) | action_buffer[action_size + 1];
                 action_size += 2;
             }
         }
 
-        /* Check buffer space */
+        /* Check output buffer space */
         if (serialize_pos + action_size + custom_data_size > out_size) {
             break;
         }
 
-        /* Check for complete action */
-        if (action_pos + action_size > action_length) {
-            break;
-        }
-
-        /* Copy action to output buffer */
-        memcpy(out_buf + serialize_pos, action_data + action_pos, action_size);
+        /* Copy action header to output */
+        memcpy(out_buf + serialize_pos, action_buffer, action_size);
         serialize_pos += action_size;
 
-        /* Copy custom data if present */
+        /* Handle custom data if present */
         if (has_custom_data && custom_data_size > 0) {
-            if (custom_pos + custom_data_size > custom_length) {
+            size_t custom_bytes_read =
+                ring_buf_get(custom_buf, out_buf + serialize_pos, custom_data_size);
+
+            if (custom_bytes_read != custom_data_size) {
                 break;
             }
 
-            memcpy(out_buf + serialize_pos, custom_data + custom_pos, custom_data_size);
             serialize_pos += custom_data_size;
-            custom_pos += custom_data_size;
         }
 
-        action_pos += action_size;
+        /* Slide window forward */
+        if (action_size < action_buffer_filled) {
+            memmove(action_buffer, action_buffer + action_size, action_buffer_filled - action_size);
+            action_buffer_filled -= action_size;
+        } else {
+            action_buffer_filled = 0;
+        }
     }
-
-    // TODO: checking if action_ and custom_pos match action_ and custom_length could be interesting
-
-    /* Free the claimed data */
-    ring_buf_get_finish(action_buf, action_length);
-    ring_buf_get_finish(custom_buf, custom_length);
 
     return serialize_pos;
 }
