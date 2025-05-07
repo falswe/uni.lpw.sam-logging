@@ -75,9 +75,12 @@ static size_t serialize_action(const struct sam_log_packed_action *action, uint8
     }
 
     /* First byte: m_hdr and status */
+    // TODO: 2 reserved bits placed between status and m_hdr - let's have more aggressive packing.
+    // status should be placed after m_hdr directly, so custom_status can possibly fit.
     buf[pos++] = ((action->m_hdr & 0x01) << 7) | (action->status & STATUS_BITMASK);
 
     /* Custom status if needed */
+    // TODO: let's place custom status in the remaining two bits of m_hdr and status and a new byte
     if (action->status == CUSTOM_STATUS_VALUE) {
         if (pos + 2 > bufsize) {
             return 0;
@@ -321,6 +324,8 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
     }
 
     /* Try to add to start buffer */
+    // TODO: looks like this could mess up the order of the actions - start buffer full should be
+    // calculated only once (once it's "full", switch to end buffer)
     bool start_buffer_full =
         (ring_buf_space_get(&log_ctx.start_actions) < action_size ||
          (custom_data_len > 0 && ring_buf_space_get(&log_ctx.start_custom) < custom_data_len));
@@ -359,6 +364,8 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
 }
 
 /* Log an action with only status */
+// TODO: might need to always have slot_idx and slot_idx_diff as a parameter - otherwise they will
+// be logged with the anticipated (but maybe wrong) value
 int sam_log_action_status(enum sam_log_status status) {
     return sam_log_action(status, 0, log_ctx.current_slot_idx, 0, log_ctx.default_slots_to_use,
                           false, NULL, 0);
@@ -471,6 +478,8 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
 
         action_pos += action_size;
     }
+
+    // TODO: checking if action_ and custom_pos match action_ and custom_length could be interesting
 
     /* Free the claimed data */
     ring_buf_get_finish(action_buf, action_length);
