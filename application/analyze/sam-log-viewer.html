@@ -868,10 +868,17 @@
                             </thead>
                             <tbody>
                     `;
-
+                        let first_slot_idx_logged = true;
+                        if(log.section === 'END' ){
+                            first_slot_idx_logged = false;
+                        }
                         // Add rows for each action
                         log.actions.forEach((action, index) => {
                             const rowClass = getStatusClass(action.status);
+
+                            if (action.hdr & CONSTANTS.HEADER_FLAGS.SLOT_IDX) {
+                                first_slot_idx_logged = true;
+                            }
 
                             html += `
                             <tr class="${rowClass}">
@@ -879,7 +886,13 @@
                                 <td>${action.statusName} (${action.status})</td>
                                 <td>${action.customStatus !== undefined ? action.customStatus : '-'}</td>
                                 <td>${formatHeaderBits(action.hdr)}</td>
-                                <td>${action.slotIdx}</td>
+                                <td>${
+                                  // if this action has an explicit SLOT_IDX field, show it directly
+                                  (first_slot_idx_logged)
+                                    ? action.slotIdx
+                                    // otherwise show it as "prev + slots_to_use"
+                                    : `x + ${action.slotIdx}`
+                                }</td>
                                 <td>${action.slotsToUse}</td>
                                 <td>${action.setsDefaultSlots ? 'Yes' : 'No'}</td>
                                 <td>${action.slotIdxDiff !== undefined ? action.slotIdxDiff : '-'}</td>
