@@ -49,6 +49,7 @@ struct sam_log_ctx {
     struct ring_buf end_actions;
     struct ring_buf end_custom;
     bool logging_enabled;
+    bool start_buffer_full;
     uint8_t default_slots_to_use;
     uint32_t current_slot_idx;
     struct sam_log_stats stats;
@@ -161,6 +162,7 @@ int sam_log_init(void) {
 
     /* Initialize context */
     log_ctx.logging_enabled = true;
+    log_ctx.start_buffer_full = false;
     log_ctx.default_slots_to_use = 1;
     log_ctx.current_slot_idx = 0;
     memset(&log_ctx.stats, 0, sizeof(struct sam_log_stats));
@@ -338,34 +340,46 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
         return -EINVAL;
     }
 
-    /* Try to add to start buffer */
-    // TODO: looks like this could mess up the order of the actions - start buffer full should be
-    // calculated only once (once it's "full", switch to end buffer)
-    bool start_buffer_full =
-        (ring_buf_space_get(&log_ctx.start_actions) < action_size ||
-         (custom_data_len > 0 && ring_buf_space_get(&log_ctx.start_custom) < custom_data_len));
+    /* Try to add to start buffer first if not full */
+    if (!log_ctx.start_buffer_full) {
+        /* Check if action fits in start buffer */
+        if (ring_buf_space_get(&log_ctx.start_actions) >= action_size &&
+            (custom_data_len == 0 ||
+             ring_buf_space_get(&log_ctx.start_custom) >= custom_data_len)) {
+            /* Add to start buffer */
+            ret = add_to_buffer(&log_ctx.start_actions, &log_ctx.start_custom, &action, custom_data,
+                                custom_data_len);
 
-    if (!start_buffer_full) {
-        ret = add_to_buffer(&log_ctx.start_actions, &log_ctx.start_custom, &action, custom_data,
-                            custom_data_len);
-        if (ret < 0) {
-            start_buffer_full = true;
+            if (ret == 0) {
+                /* Successfully added to start buffer */
+                /* Update current slot index */
+                if (status == SAM_LOG_SYNCH_DONE) {
+                    log_ctx.current_slot_idx = slot_idx;
+                } else {
+                    log_ctx.current_slot_idx += slots_to_use;
+                }
+                return 0;
+            }
         }
+
+        /* Start buffer is full, switch to end buffer permanently */
+        LOG_INF("Start buffer full, switching to end buffer");
+        log_ctx.start_buffer_full = true;
     }
 
-    /* Add to end buffer if start buffer is full */
-    if (start_buffer_full) {
-        /* Make room in end buffer if needed */
-        make_room_in_buffer(&log_ctx.end_actions, &log_ctx.end_custom, action_size,
-                            custom_data_len);
+    /* If we're here, we need to use the end buffer */
 
-        ret = add_to_buffer(&log_ctx.end_actions, &log_ctx.end_custom, &action, custom_data,
-                            custom_data_len);
-        if (ret < 0) {
-            LOG_WRN("Failed to add to end buffer: %d", ret);
-            log_ctx.stats.actions_dropped++;
-            return ret;
-        }
+    /* Make room in end buffer if needed */
+    make_room_in_buffer(&log_ctx.end_actions, &log_ctx.end_custom, action_size, custom_data_len);
+
+    /* Add to end buffer */
+    ret = add_to_buffer(&log_ctx.end_actions, &log_ctx.end_custom, &action, custom_data,
+                        custom_data_len);
+
+    if (ret < 0) {
+        LOG_WRN("Failed to add to end buffer: %d", ret);
+        log_ctx.stats.actions_dropped++;
+        return ret;
     }
 
     /* Update current slot index */
@@ -603,6 +617,8 @@ int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
             }
         }
     }
+
+    log_ctx.start_buffer_full = false;
 
     /* Log statistics and reset */
     LOG_DBG("Stats: %u actions logged, %u dropped; %u custom fields logged, %u dropped",
