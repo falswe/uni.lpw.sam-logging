@@ -868,16 +868,16 @@
                             </thead>
                             <tbody>
                     `;
-                        let first_slot_idx_logged = true;
+                        let end_slot_idx_unknown = false;
                         if(log.section === 'END' ){
-                            first_slot_idx_logged = false;
+                            end_slot_idx_unknown = true;
                         }
                         // Add rows for each action
                         log.actions.forEach((action, index) => {
                             const rowClass = getStatusClass(action.status);
 
                             if (action.hdr & CONSTANTS.HEADER_FLAGS.SLOT_IDX) {
-                                first_slot_idx_logged = true;
+                                end_slot_idx_unknown = false;
                             }
 
                             html += `
@@ -887,10 +887,8 @@
                                 <td>${action.customStatus !== undefined ? action.customStatus : '-'}</td>
                                 <td>${formatHeaderBits(action.hdr)}</td>
                                 <td>${
-                                  // if this action has an explicit SLOT_IDX field, show it directly
-                                  (first_slot_idx_logged)
+                                  (!end_slot_idx_unknown)
                                     ? action.slotIdx
-                                    // otherwise show it as "prev + slots_to_use"
                                     : `x + ${action.slotIdx}`
                                 }</td>
                                 <td>${action.slotsToUse}</td>
