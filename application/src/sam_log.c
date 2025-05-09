@@ -571,6 +571,9 @@ int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
     }
 
     /* Process START buffer */
+    uint32_t start_buf_size = ring_buf_size_get(&log_ctx.start_actions);
+    LOG_INF("START buffer contains %u bytes", start_buf_size);
+
     memset(serialize_buf, 0, sizeof(serialize_buf));
     serialize_len = process_buffer(&log_ctx.start_actions, &log_ctx.start_custom, serialize_buf,
                                    sizeof(serialize_buf));
@@ -591,6 +594,9 @@ int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
     }
 
     /* Process END buffer */
+    uint32_t end_buf_size = ring_buf_size_get(&log_ctx.end_actions);
+    LOG_INF("END buffer contains %u bytes", end_buf_size);
+
     memset(serialize_buf, 0, sizeof(serialize_buf));
     serialize_len = process_buffer(&log_ctx.end_actions, &log_ctx.end_custom, serialize_buf,
                                    sizeof(serialize_buf));
