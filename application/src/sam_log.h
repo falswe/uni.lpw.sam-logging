@@ -54,11 +54,6 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
                    const void *custom_data, uint16_t custom_data_len);
 
 /**
- * Log an action with only the status field
- */
-int sam_log_action_status(enum sam_log_status status);
-
-/**
  * Get logging statistics
  */
 int sam_log_get_stats(struct sam_log_stats *stats);
