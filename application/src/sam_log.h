@@ -5,6 +5,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* Buffer size configuration */
+#define SAM_LOG_ACTIONS_BUF_SIZE 128
+#define SAM_LOG_CUSTOM_BUF_SIZE 128
+
 /* Status values */
 enum sam_log_status {
     SAM_LOG_RX_SUCCESS = 0x00,
@@ -25,14 +29,6 @@ enum sam_log_status {
     SAM_LOG_UNKNOWN = 0x1E,
 };
 
-/* Header bit definitions */
-#define SAM_LOG_HDR_SLOT_IDX (1 << 0)
-#define SAM_LOG_HDR_SLOTS_TO_USE (1 << 1)
-#define SAM_LOG_HDR_SLOT_IDX_DIFF (1 << 2)
-#define SAM_LOG_HDR_SCAN (1 << 3)
-#define SAM_LOG_HDR_CUSTOM_FIELDS (1 << 4)
-#define SAM_LOG_HDR_DEFAULT_SLOTS_TO_USE (1 << 5)
-
 /* Structure for logging statistics */
 struct sam_log_stats {
     uint32_t actions_logged;
@@ -43,11 +39,23 @@ struct sam_log_stats {
 
 /**
  * Initialize the logging subsystem
+ *
+ * @return 0 on success, negative error code on failure
  */
 int sam_log_init(void);
 
 /**
  * Log an action with all possible fields
+ *
+ * @param status Status code of the action
+ * @param custom_status Custom status value (used when status == SAM_LOG_UNKNOWN)
+ * @param slot_idx Slot index where the action occurred
+ * @param slot_idx_diff Difference between expected and actual slot index
+ * @param slots_to_use Number of slots used by this action
+ * @param set_default_slots Whether to set this as the default slots to use
+ * @param custom_data Pointer to custom data to include with the action
+ * @param custom_data_len Length of the custom data in bytes
+ * @return 0 on success, negative error code on failure
  */
 int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t slot_idx,
                    int16_t slot_idx_diff, uint8_t slots_to_use, bool set_default_slots,
@@ -55,11 +63,19 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
 
 /**
  * Get logging statistics
+ *
+ * @param stats Pointer to a statistics structure to fill
+ * @return 0 on success, negative error code on failure
  */
 int sam_log_get_stats(struct sam_log_stats *stats);
 
 /**
  * Flush logs and output as string
+ *
+ * @param log_name Name to identify the log section
+ * @param epoch_id ID of the current epoch
+ * @param bytes_written Pointer to store the number of bytes written
+ * @return 0 on success, negative error code on failure
  */
 int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written);
 
