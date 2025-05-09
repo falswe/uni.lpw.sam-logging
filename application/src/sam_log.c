@@ -353,9 +353,11 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
             if (ret == 0) {
                 /* Successfully added to start buffer */
                 /* Update current slot index */
-                if (status == SAM_LOG_SYNCH_DONE) {
-                    log_ctx.current_slot_idx = slot_idx;
+                if (slot_idx != log_ctx.current_slot_idx) {
+                    /* If a specific slot was provided, use it as the new base position */
+                    log_ctx.current_slot_idx = slot_idx + slots_to_use;
                 } else {
+                    /* Otherwise, increment from current position */
                     log_ctx.current_slot_idx += slots_to_use;
                 }
                 return 0;
@@ -383,9 +385,11 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
     }
 
     /* Update current slot index */
-    if (status == SAM_LOG_SYNCH_DONE) {
-        log_ctx.current_slot_idx = slot_idx;
+    if (slot_idx != log_ctx.current_slot_idx) {
+        /* If a specific slot was provided, use it as the new base position */
+        log_ctx.current_slot_idx = slot_idx + slots_to_use;
     } else {
+        /* Otherwise, increment from current position */
         log_ctx.current_slot_idx += slots_to_use;
     }
 
