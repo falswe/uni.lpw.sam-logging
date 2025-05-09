@@ -36,17 +36,12 @@ LOG_MODULE_REGISTER(sam_log, CONFIG_LOG_DEFAULT_LEVEL);
 #define SAM_LOG_HDR_DEFAULT_SLOTS_TO_USE (1 << 5)
 
 /* Derived byte sizes to avoid magic numbers */
-#define SAM_LOG_BYTE_SIZE_CUSTOM_STATUS \
-    (((SAM_LOG_BIT_SIZE_CUSTOM_STATUS + (SAM_LOG_BIT_SIZE_CUSTOM_STATUS % 8)) / 8))
-#define SAM_LOG_BYTE_SIZE_HDR ((SAM_LOG_BIT_SIZE_HDR + (SAM_LOG_BIT_SIZE_HDR % 8)) / 8)
-#define SAM_LOG_BYTE_SIZE_SLOT_IDX \
-    ((SAM_LOG_BIT_SIZE_SLOT_IDX + (SAM_LOG_BIT_SIZE_SLOT_IDX % 8)) / 8)
-#define SAM_LOG_BYTE_SIZE_SLOT_IDX_DIFF \
-    ((SAM_LOG_BIT_SIZE_SLOT_IDX_DIFF + (SAM_LOG_BIT_SIZE_SLOT_IDX_DIFF % 8)) / 8)
-#define SAM_LOG_BYTE_SIZE_SLOTS_TO_USE \
-    ((SAM_LOG_BIT_SIZE_SLOTS_TO_USE + (SAM_LOG_BIT_SIZE_SLOTS_TO_USE % 8)) / 8)
-#define SAM_LOG_BYTE_SIZE_TOTAL_CUSTOM_LEN \
-    ((SAM_LOG_BIT_SIZE_TOTAL_CUSTOM_LEN + (SAM_LOG_BIT_SIZE_TOTAL_CUSTOM_LEN % 8)) / 8)
+#define SAM_LOG_BYTE_SIZE_CUSTOM_STATUS ((SAM_LOG_BIT_SIZE_CUSTOM_STATUS + 7) / 8)
+#define SAM_LOG_BYTE_SIZE_HDR ((SAM_LOG_BIT_SIZE_HDR + 7) / 8)
+#define SAM_LOG_BYTE_SIZE_SLOT_IDX ((SAM_LOG_BIT_SIZE_SLOT_IDX + 7) / 8)
+#define SAM_LOG_BYTE_SIZE_SLOT_IDX_DIFF ((SAM_LOG_BIT_SIZE_SLOT_IDX_DIFF + 7) / 8)
+#define SAM_LOG_BYTE_SIZE_SLOTS_TO_USE ((SAM_LOG_BIT_SIZE_SLOTS_TO_USE + 7) / 8)
+#define SAM_LOG_BYTE_SIZE_TOTAL_CUSTOM_LEN ((SAM_LOG_BIT_SIZE_TOTAL_CUSTOM_LEN + 7) / 8)
 
 /* Bit shifts */
 #define SAM_LOG_SHIFT_M_HDR 7
@@ -527,12 +522,13 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
         bool has_custom_data = false;
 
         if (status == SAM_LOG_UNKNOWN) {
-            action_size += 1;
+            /* High bits already contained in previous byte */
+            action_size += SAM_LOG_BYTE_SIZE_CUSTOM_STATUS - 1;
         }
 
         if (m_hdr) {
             uint8_t hdr = action_buffer[action_size];
-            action_size += 1;
+            action_size += SAM_LOG_BYTE_SIZE_HDR;
 
             if (hdr & SAM_LOG_HDR_SLOT_IDX) {
                 action_size += SAM_LOG_BYTE_SIZE_SLOT_IDX;
@@ -604,12 +600,10 @@ int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
     }
 
     /* Process START buffer */
-    uint32_t start_buf_size = ring_buf_size_get(&log_ctx.start_actions);
-    LOG_INF("START buffer contains %u bytes", start_buf_size);
-
     memset(serialize_buf, 0, sizeof(serialize_buf));
     serialize_len = process_buffer(&log_ctx.start_actions, &log_ctx.start_custom, serialize_buf,
                                    sizeof(serialize_buf));
+    LOG_INF("Serialized START buffer contains %u bytes", serialize_len);
 
     if (serialize_len > 0) {
         /* Encode to Z85 */
@@ -627,12 +621,10 @@ int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
     }
 
     /* Process END buffer */
-    uint32_t end_buf_size = ring_buf_size_get(&log_ctx.end_actions);
-    LOG_INF("END buffer contains %u bytes", end_buf_size);
-
     memset(serialize_buf, 0, sizeof(serialize_buf));
     serialize_len = process_buffer(&log_ctx.end_actions, &log_ctx.end_custom, serialize_buf,
                                    sizeof(serialize_buf));
+    LOG_INF("Serialized END buffer contains %u bytes", serialize_len);
 
     if (serialize_len > 0) {
         /* Encode to Z85 */

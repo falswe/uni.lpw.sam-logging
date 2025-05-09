@@ -6,8 +6,8 @@
 #include <stdint.h>
 
 /* Buffer size configuration */
-#define SAM_LOG_ACTIONS_BUF_SIZE 128
-#define SAM_LOG_CUSTOM_BUF_SIZE 128
+#define SAM_LOG_ACTIONS_BUF_SIZE 80
+#define SAM_LOG_CUSTOM_BUF_SIZE 80
 
 /* Status values */
 enum sam_log_status {

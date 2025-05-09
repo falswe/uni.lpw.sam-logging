@@ -95,6 +95,8 @@ static void showcase_overflow_handling(void) {
     for (int i = 0; i < 700; i++) {
         /* Add a mix of simple and complex entries */
         if (i % 10 == 0) {
+            /* Trigger slot index to be logged */
+            i++;
             /* Log with custom data occasionally */
             sam_log_action(SAM_LOG_TX_DONE, 0, 2000 + i, 0, 1, false, packet_data,
                            sizeof(packet_data));
