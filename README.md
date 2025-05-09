@@ -83,9 +83,8 @@ The viewer provides:
 - A summary of all logged actions
 - Detailed inspection of each action's fields
 - Visualization of the binary data
-- Timeline view of protocol execution
 
 ## Dependencies
 
-- Zephyr RTOS (tested with version 3.2.0+)
+- Zephyr RTOS
 - Z85 library (included as a submodule)
