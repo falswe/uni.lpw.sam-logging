@@ -392,14 +392,6 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
     return 0;
 }
 
-/* Log an action with only status */
-// TODO: might need to always have slot_idx and slot_idx_diff as a parameter - otherwise they will
-// be logged with the anticipated (but maybe wrong) value
-int sam_log_action_status(enum sam_log_status status) {
-    return sam_log_action(status, 0, log_ctx.current_slot_idx, 0, log_ctx.default_slots_to_use,
-                          false, NULL, 0);
-}
-
 /* Get logging statistics */
 int sam_log_get_stats(struct sam_log_stats *stats) {
     if (!stats) {

@@ -21,7 +21,7 @@ static void showcase_basic_logging(void) {
     LOG_INF("=== Basic Logging Demo ===");
 
     /* Simple status log */
-    sam_log_action_status(SAM_LOG_RX_SUCCESS);
+    sam_log_action(SAM_LOG_RX_SUCCESS, 0, 15, 0, 1, false, NULL, 0);
     LOG_INF("Logged RX_SUCCESS status");
 
     /* Log with specific slot index */
@@ -70,7 +70,7 @@ static void showcase_epoch_simulation(void) {
     sam_log_action(SAM_LOG_TX_DONE, 0, base_slot + 2, 0, 2, true, NULL, 0);
     sam_log_action(SAM_LOG_SYNCH_DONE, 0, base_slot + 10, 0, 1, false, NULL, 0);
     sam_log_action(SAM_LOG_SKIP_SUCCESS, 0, base_slot + 11, 0, 5, false, NULL, 0);
-    sam_log_action_status(SAM_LOG_RX_TIMEOUT);
+    sam_log_action(SAM_LOG_RX_TIMEOUT, 0, base_slot + 12, 0, 1, false, NULL, 0);
     sam_log_action(SAM_LOG_TX_SCHED_LATE, 0, base_slot + 20, 2, 1, false, NULL, 0);
     sam_log_action(SAM_LOG_SYNCH_FAIL, 0, base_slot + 21, 0, 1, false, NULL, 0);
 
@@ -90,6 +90,8 @@ static void showcase_overflow_handling(void) {
     /* Fill the buffer with many entries to trigger overflow */
     LOG_INF("Adding 700 log entries to trigger overflow...");
 
+    sam_log_action(SAM_LOG_TX_DONE, 0, 1999, 0, 1, true, packet_data, sizeof(packet_data));
+
     for (int i = 0; i < 700; i++) {
         /* Add a mix of simple and complex entries */
         if (i % 10 == 0) {
@@ -98,7 +100,8 @@ static void showcase_overflow_handling(void) {
                            sizeof(packet_data));
         } else {
             /* Simple status log for most entries */
-            sam_log_action_status((i % 5 == 0) ? SAM_LOG_RX_SUCCESS : SAM_LOG_TX_DONE);
+            sam_log_action((i % 5 == 0) ? SAM_LOG_RX_SUCCESS : SAM_LOG_TX_DONE, 0, 2000 + i, 0, 1,
+                           false, NULL, 0);
         }
     }
 
