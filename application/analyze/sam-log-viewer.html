@@ -709,15 +709,16 @@
              * Extract Z85 log data from a log line
              */
             function extractZ85Data(line) {
-                const logMatch = line.match(/LOG\[([^\]]+)\]\s+(START|END)\s+(\d+)\s+([^\s]+)/);
+                const logMatch = line.match(/LOG\[([^\]]+)\]\s+(START|END)\s+(\d+)\s+(.+)/);
 
                 if (!logMatch) return null;
 
                 const [_, logName, section, epochId, encodedData] = logMatch;
 
-                // Validate Z85 data
-                if (!Z85.isValid(encodedData)) {
-                    debug(`Invalid Z85 data in log: ${encodedData.substring(0, 20)}...`);
+                const cleanedEncoded = encodedData.replace(/\s+/g, '');  // Just in case
+
+                if (!Z85.isValid(cleanedEncoded)) {
+                    debug(`Invalid Z85 data in log: ${cleanedEncoded.substring(0, 20)}...`);
                     return null;
                 }
 
@@ -727,53 +728,54 @@
                     logName,
                     section,
                     epochId: parseInt(epochId),
-                    encodedData
+                    encodedData: cleanedEncoded
                 };
             }
 
             /**
              * Process full log text and parse all log entries
              */
-            function processLogText(text) {
+             function processLogText(text) {
                 if (!text || typeof text !== 'string') {
                     return [];
                 }
 
                 const logs = [];
                 const lines = text.split('\n');
+                // now matches “[hh:mm:ss.mmm,uuu] …”
+                const timestampRe = /^\[\d{2}:\d{2}:\d{2}\.\d{3},\d{3}\]/;
 
-                debug(`Processing ${lines.length} lines of log text`);
+                for (let i = 0; i < lines.length; i++) {
+                    let line = lines[i].trim();
+                    if (!line.startsWith('LOG[')) {
+                        continue;
+                    }
 
-                for (const line of lines) {
-                    const trimmedLine = line.trim();
-                    if (!trimmedLine) continue;
+                    // collect the LOG[...] line plus any wrapped Z85 lines
+                    let block = line;
+                    let j = i + 1;
+                    while (j < lines.length && !timestampRe.test(lines[j].trim())) {
+                        block += ' ' + lines[j].trim();
+                        j++;
+                    }
+                    i = j - 1;
 
-                    // Look for SAM log entries
-                    if (trimmedLine.includes("LOG[") && trimmedLine.includes("sam_log:")) {
-                        const logInfo = extractZ85Data(trimmedLine);
+                    block = block.replace(/\s+/g, ' ');
 
-                        if (logInfo) {
-                            try {
-                                // Decode Z85 data
-                                const decodedData = Z85.decode(logInfo.encodedData);
+                    const logInfo = extractZ85Data(block);
+                    if (!logInfo) continue;
 
-                                if (decodedData && decodedData.length > 0) {
-                                    // Parse the decoded binary data
-                                    const { actions } = parseLogData(decodedData);
+                    try {
+                        const decodedData = Z85.decode(logInfo.encodedData);
+                        if (!decodedData || decodedData.length === 0) continue;
 
-                                    if (actions.length > 0) {
-                                        logs.push({
-                                            ...logInfo,
-                                            actions,
-                                            decodedData
-                                        });
-                                    }
-                                }
-                            } catch (e) {
-                                debug(`Error processing log: ${e.message}`);
-                                console.error("Error processing log:", e);
-                            }
-                        }
+                        const { actions } = parseLogData(decodedData);
+                        if (!actions || actions.length === 0) continue;
+
+                        logs.push({ ...logInfo, actions, decodedData });
+                    } catch (e) {
+                        debug(`Error processing log "${logInfo.logName}": ${e.message}`);
+                        console.error(e);
                     }
                 }
 

@@ -612,7 +612,7 @@ int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
 
         if (encoded_len > 0 && encoded_len < sizeof(encoded)) {
             encoded[encoded_len] = '\0';
-            LOG_INF("LOG[%s] START %u %s", log_name, epoch_id, encoded);
+            LOG_PRINTK("LOG[%s] START %u %s\n", log_name, epoch_id, encoded);
 
             if (bytes_written) {
                 *bytes_written += encoded_len;
@@ -633,7 +633,7 @@ int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
 
         if (encoded_len > 0 && encoded_len < sizeof(encoded)) {
             encoded[encoded_len] = '\0';
-            LOG_INF("LOG[%s] END %u %s", log_name, epoch_id, encoded);
+            LOG_PRINTK("LOG[%s] END %u %s\n", log_name, epoch_id, encoded);
 
             if (bytes_written) {
                 *bytes_written += encoded_len;
