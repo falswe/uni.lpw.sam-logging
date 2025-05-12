@@ -586,7 +586,7 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
 /* Flush logs and encode them */
 int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
     /* Z85 encoding requires 5 bytes for every 4 bytes, plus padding */
-    char encoded[SAM_LOG_SERIALIZE_BUF_SIZE * 5 / 4 + 10];
+    static char encoded[SAM_LOG_SERIALIZE_BUF_SIZE * 5 / 4 + 10];
     size_t encoded_len;
     size_t serialize_len;
 
