@@ -1,0 +1,14 @@
+{
+  "duration": 5,
+  "start_time": "asap",
+  "binaries": [
+    {
+      "hardware": "dwm3001",
+      "bin_file": "../build/application/zephyr/zephyr.hex",
+      "targets": [
+        70
+      ]
+    }
+  ],
+  "island": "HALL-A"
+}

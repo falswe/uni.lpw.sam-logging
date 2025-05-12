@@ -15,8 +15,11 @@ zephyr-dw3xxx/
 sam-dwm3001cdk/
 sam-dw3000/
 sam-core/
+cloves-client/
 z85/
 
-*.json
+application/compile_commands.json
 
 .cache/
+
+downloads/

@@ -31,6 +31,9 @@ manifest:
     - name: sam-dwm3001cdk
       remote: github-d3s
       revision: master
+    - name: cloves-client
+      remote: github-d3s
+      revision: main
     - name: z85
       remote: artemkin
       revision: master
