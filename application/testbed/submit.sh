@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Configuration
-CLIENT_PATH="/home/we/unitn-repos/lpw/labs/cloves-client/iot_testbed_client.py"
+CLIENT_PATH="$(dirname "$(readlink -f "$0")")/../../cloves-client/iot_testbed_client.py"
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 JOB_FILE="$SCRIPT_DIR/job.json"
 DOWNLOAD_DIR="$SCRIPT_DIR/downloads"
