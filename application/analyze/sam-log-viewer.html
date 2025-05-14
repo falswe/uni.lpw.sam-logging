@@ -647,6 +647,7 @@
                 const actions = [];
                 let defaultSlotsToUse = 1;
                 let currentSlotIdx = 0;
+                let expectedNextSlotIdx = 0;
                 let pos = 0;
 
                 debug(`Parsing buffer of ${buffer.length} bytes`);
@@ -667,8 +668,20 @@
                         break;
                     }
 
-                    // Parse the action
-                    const { action, newPos } = parseAction(buffer, pos, defaultSlotsToUse, currentSlotIdx);
+                    // Calculate the expected slot index before parsing
+                    const expectedSlotIdx = expectedNextSlotIdx;
+
+                    // Parse the action with the expected slot index
+                    const { action, newPos } = parseAction(buffer, pos, defaultSlotsToUse, expectedSlotIdx);
+
+                    // Update slot tracking
+                    if (action.hdr & CONSTANTS.HEADER_FLAGS.SLOT_IDX) {
+                        // If action has explicit slot index, use that as the base
+                        expectedNextSlotIdx = action.slotIdx + action.slotsToUse;
+                    } else {
+                        // Otherwise increment from the expected position
+                        expectedNextSlotIdx += action.slotsToUse;
+                    }
 
                     // Sanity check parsed values
                     if (action.slotIdx > 1000000 || action.slotsToUse > 100) {
@@ -735,7 +748,7 @@
             /**
              * Process full log text and parse all log entries
              */
-             function processLogText(text) {
+            function processLogText(text) {
                 if (!text || typeof text !== 'string') {
                     return [];
                 }
@@ -871,7 +884,7 @@
                             <tbody>
                     `;
                         let end_slot_idx_unknown = false;
-                        if(log.section === 'END' ){
+                        if (log.section === 'END') {
                             end_slot_idx_unknown = true;
                         }
                         // Add rows for each action
@@ -888,8 +901,7 @@
                                 <td>${action.statusName} (${action.status})</td>
                                 <td>${action.customStatus !== undefined ? action.customStatus : '-'}</td>
                                 <td>${formatHeaderBits(action.hdr)}</td>
-                                <td>${
-                                  (!end_slot_idx_unknown)
+                                <td>${(!end_slot_idx_unknown)
                                     ? action.slotIdx
                                     : `x + ${action.slotIdx}`
                                 }</td>
