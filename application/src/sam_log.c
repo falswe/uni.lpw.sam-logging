@@ -176,6 +176,15 @@ static size_t serialize_action(const struct sam_log_packed_action *action, uint8
     return pos;
 }
 
+/* Reset context variables to initial state */
+static void reset_log_context(void) {
+    log_ctx.logging_enabled = true;
+    log_ctx.start_buffer_full = false;
+    log_ctx.default_slots_to_use = SAM_LOG_DEFAULT_SLOTS_TO_USE;
+    log_ctx.current_slot_idx = 0;
+    memset(&log_ctx.stats, 0, sizeof(struct sam_log_stats));
+}
+
 /* Initialize the logging subsystem */
 int sam_log_init(void) {
     /* Initialize ring buffers */
@@ -185,11 +194,7 @@ int sam_log_init(void) {
     ring_buf_init(&log_ctx.end_custom, sizeof(end_custom_buf), end_custom_buf);
 
     /* Initialize context */
-    log_ctx.logging_enabled = true;
-    log_ctx.start_buffer_full = false;
-    log_ctx.default_slots_to_use = SAM_LOG_DEFAULT_SLOTS_TO_USE;
-    log_ctx.current_slot_idx = 0;
-    memset(&log_ctx.stats, 0, sizeof(struct sam_log_stats));
+    reset_log_context();
 
     return 0;
 }
@@ -641,14 +646,12 @@ int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
         }
     }
 
-    log_ctx.start_buffer_full = false;
-
     /* Log statistics and reset */
     LOG_DBG("Stats: %u actions logged, %u dropped; %u custom fields logged, %u dropped",
             log_ctx.stats.actions_logged, log_ctx.stats.actions_dropped,
             log_ctx.stats.custom_fields_logged, log_ctx.stats.custom_fields_dropped);
 
-    memset(&log_ctx.stats, 0, sizeof(struct sam_log_stats));
+    reset_log_context();
 
     return 0;
 }
