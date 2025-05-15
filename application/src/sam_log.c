@@ -184,6 +184,8 @@ static void reset_log_context(void) {
     log_ctx.start_buffer_full = false;
     log_ctx.default_slots_to_use = SAM_LOG_DEFAULT_SLOTS_TO_USE;
     log_ctx.current_slot_idx = 0;
+    log_ctx.last_deleted_default_slots_to_use = SAM_LOG_DEFAULT_SLOTS_TO_USE;
+    log_ctx.starting_slot_idx_end_buffer = 0;
     memset(&log_ctx.stats, 0, sizeof(struct sam_log_stats));
 }
 
