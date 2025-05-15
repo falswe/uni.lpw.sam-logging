@@ -74,6 +74,8 @@ struct sam_log_ctx {
     bool start_buffer_full;
     uint8_t default_slots_to_use;
     uint32_t current_slot_idx;
+    uint8_t last_deleted_default_slots_to_use;
+    uint32_t starting_slot_idx_end_buffer;
     struct sam_log_stats stats;
 };
 
@@ -276,15 +278,34 @@ static void make_room_in_buffer(struct ring_buf *action_buf, struct ring_buf *cu
                 break;
             }
 
+            bool starting_slot_idx_updated = false;
+
             /* Skip all header-dependent fields */
             if (hdr & SAM_LOG_HDR_SLOT_IDX) {
-                ring_buf_get(action_buf, NULL, SAM_LOG_BYTE_SIZE_SLOT_IDX);
+                uint8_t slot_idx[SAM_LOG_BYTE_SIZE_SLOT_IDX];
+
+                ring_buf_get(action_buf, slot_idx, SAM_LOG_BYTE_SIZE_SLOT_IDX);
+
+                /* Update slot index of the oldest action in the end buffer */
+                log_ctx.starting_slot_idx_end_buffer =
+                    ((slot_idx[0] << 16) | (slot_idx[1] << 8) | slot_idx[2]);
+                starting_slot_idx_updated = true;
             }
             if (hdr & SAM_LOG_HDR_SLOT_IDX_DIFF) {
                 ring_buf_get(action_buf, NULL, SAM_LOG_BYTE_SIZE_SLOT_IDX_DIFF);
             }
             if (hdr & SAM_LOG_HDR_SLOTS_TO_USE) {
-                ring_buf_get(action_buf, NULL, SAM_LOG_BYTE_SIZE_SLOTS_TO_USE);
+                uint8_t slots_to_use;
+
+                ring_buf_get(action_buf, &slots_to_use, SAM_LOG_BYTE_SIZE_SLOTS_TO_USE);
+                if (hdr & SAM_LOG_HDR_DEFAULT_SLOTS_TO_USE) {
+                    log_ctx.last_deleted_default_slots_to_use = slots_to_use;
+                }
+
+                /* Update slot index of the oldest action in the end buffer */
+                if (!starting_slot_idx_updated) {
+                    log_ctx.starting_slot_idx_end_buffer += slots_to_use;
+                }
             }
             if (hdr & SAM_LOG_HDR_CUSTOM_FIELDS) {
                 uint8_t len_bytes[SAM_LOG_BYTE_SIZE_TOTAL_CUSTOM_LEN];
@@ -299,6 +320,8 @@ static void make_room_in_buffer(struct ring_buf *action_buf, struct ring_buf *cu
                 ring_buf_get(custom_buf, NULL, custom_len);
                 log_ctx.stats.custom_fields_dropped++;
             }
+        } else {
+            log_ctx.starting_slot_idx_end_buffer += log_ctx.last_deleted_default_slots_to_use;
         }
 
         log_ctx.stats.actions_dropped++;
@@ -397,6 +420,8 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
         /* Start buffer is full, switch to end buffer permanently */
         LOG_INF("Start buffer full, switching to end buffer");
         log_ctx.start_buffer_full = true;
+        log_ctx.starting_slot_idx_end_buffer = log_ctx.current_slot_idx;
+        log_ctx.last_deleted_default_slots_to_use = log_ctx.default_slots_to_use;
     }
 
     /* If we're here, we need to use the end buffer */
@@ -438,13 +463,94 @@ int sam_log_get_stats(struct sam_log_stats *stats) {
 
 /* Process actions from a buffer and serialize them */
 static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custom_buf,
-                             uint8_t *out_buf, size_t out_size) {
+                             uint8_t *out_buf, size_t out_size, bool put_first_slot_idx) {
     /* Buffer to hold action header for processing */
     uint8_t action_buffer[SAM_LOG_MAX_ACTION_HEADER_SIZE];
     size_t action_buffer_filled = 0;
 
     /* Output buffer position */
     size_t serialize_pos = 0;
+
+    /* If the first action in the buffer does not contain slot idx add it*/
+    if (put_first_slot_idx) {
+        struct sam_log_packed_action first_action_with_slot_idx;
+        first_action_with_slot_idx.total_custom_len = 0;
+        uint8_t tmp_buf[SAM_LOG_MAX_ACTION_HEADER_SIZE]; /* Temp buffer for serialized action */
+
+        /* Read first byte of first action from the buffer */
+        uint8_t first_byte;
+        size_t bytes_read = ring_buf_get(action_buf, &first_byte, 1);
+
+        if (bytes_read == 0) {
+            /* No data in the buffer */
+            return serialize_pos;
+        }
+
+        uint8_t m_hdr = (first_byte & SAM_LOG_MASK_M_HDR) >> SAM_LOG_SHIFT_M_HDR;
+        uint8_t status = (first_byte & SAM_LOG_MASK_STATUS) >> SAM_LOG_SHIFT_STATUS;
+
+        first_action_with_slot_idx.m_hdr = 1;
+        first_action_with_slot_idx.status = status;
+
+        if (status == SAM_LOG_UNKNOWN) {
+            uint8_t custom_status;
+            /* High bits already contained in previous byte */
+            ring_buf_get(action_buf, &custom_status, SAM_LOG_BYTE_SIZE_CUSTOM_STATUS - 1);
+            first_action_with_slot_idx.custom_status = (first_byte & 0x3) | custom_status;
+        }
+
+        first_action_with_slot_idx.hdr = 0;
+
+        if (m_hdr) {
+            uint8_t hdr;
+            ring_buf_get(action_buf, &hdr, SAM_LOG_BYTE_SIZE_HDR);
+            first_action_with_slot_idx.hdr = hdr;
+            LOG_INF("------------------HEADER IS: %u", first_action_with_slot_idx.hdr);
+
+            if (hdr & SAM_LOG_HDR_SLOT_IDX) {
+                uint8_t slot_idx[SAM_LOG_BYTE_SIZE_SLOT_IDX];
+                ring_buf_get(action_buf, slot_idx, SAM_LOG_BYTE_SIZE_SLOT_IDX);
+                first_action_with_slot_idx.slot_idx =
+                    (slot_idx[0] << 16) | (slot_idx[1] << 8) | slot_idx[2];
+            }
+
+            if (hdr & SAM_LOG_HDR_SLOT_IDX_DIFF) {
+                uint8_t slot_idx_diff[SAM_LOG_BYTE_SIZE_SLOT_IDX_DIFF];
+                ring_buf_get(action_buf, slot_idx_diff, SAM_LOG_BYTE_SIZE_SLOT_IDX_DIFF);
+                first_action_with_slot_idx.slot_idx_diff =
+                    (slot_idx_diff[0] << 8) | slot_idx_diff[1];
+            }
+
+            if (hdr & SAM_LOG_HDR_SLOTS_TO_USE) {
+                uint8_t slots_to_use;
+                ring_buf_get(action_buf, &slots_to_use, SAM_LOG_BYTE_SIZE_SLOTS_TO_USE);
+                first_action_with_slot_idx.slots_to_use = slots_to_use;
+            }
+
+            if (hdr & SAM_LOG_HDR_CUSTOM_FIELDS) {
+                uint8_t custom_len[SAM_LOG_BYTE_SIZE_TOTAL_CUSTOM_LEN];
+                ring_buf_get(action_buf, custom_len, SAM_LOG_BYTE_SIZE_TOTAL_CUSTOM_LEN);
+                first_action_with_slot_idx.total_custom_len = (custom_len[0] << 8) | custom_len[1];
+            }
+        }
+
+        /* Add slot index if it was not in the action */
+        if (!(first_action_with_slot_idx.hdr & SAM_LOG_HDR_SLOT_IDX)) {
+            first_action_with_slot_idx.hdr |= SAM_LOG_HDR_SLOT_IDX;
+            first_action_with_slot_idx.slot_idx =
+                log_ctx.starting_slot_idx_end_buffer + log_ctx.last_deleted_default_slots_to_use;
+        }
+
+        size_t len = serialize_action(&first_action_with_slot_idx, tmp_buf, sizeof(tmp_buf));
+        memcpy(out_buf + serialize_pos, tmp_buf, len);
+        serialize_pos += len;
+
+        if (first_action_with_slot_idx.total_custom_len > 0) {
+            ring_buf_get(custom_buf, out_buf + serialize_pos,
+                         first_action_with_slot_idx.total_custom_len);
+            serialize_pos += first_action_with_slot_idx.total_custom_len;
+        }
+    }
 
     /* Process actions until buffer is empty or output is full */
     while (serialize_pos < out_size) {
@@ -607,7 +713,7 @@ int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
     /* Process START buffer */
     memset(serialize_buf, 0, sizeof(serialize_buf));
     serialize_len = process_buffer(&log_ctx.start_actions, &log_ctx.start_custom, serialize_buf,
-                                   sizeof(serialize_buf));
+                                   sizeof(serialize_buf), false);
     LOG_INF("Serialized START buffer contains %u bytes", serialize_len);
 
     if (serialize_len > 0) {
@@ -628,7 +734,7 @@ int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
     /* Process END buffer */
     memset(serialize_buf, 0, sizeof(serialize_buf));
     serialize_len = process_buffer(&log_ctx.end_actions, &log_ctx.end_custom, serialize_buf,
-                                   sizeof(serialize_buf));
+                                   sizeof(serialize_buf), true);
     LOG_INF("Serialized END buffer contains %u bytes", serialize_len);
 
     if (serialize_len > 0) {
