@@ -1,5 +1,7 @@
 #include "sam_log.h"
 
+#include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
