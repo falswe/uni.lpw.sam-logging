@@ -477,6 +477,7 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
 
     /* If the first action in the buffer does not contain slot idx add it*/
     if (put_first_slot_idx) {
+        log_ctx.starting_slot_idx_end_buffer += log_ctx.last_deleted_default_slots_to_use;
         struct sam_log_packed_action first_action_with_slot_idx;
         first_action_with_slot_idx.total_custom_len = 0;
         uint8_t tmp_buf[SAM_LOG_MAX_ACTION_HEADER_SIZE]; /* Temp buffer for serialized action */
