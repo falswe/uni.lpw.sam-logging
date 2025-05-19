@@ -1,4 +1,4 @@
-#include "sam_log.h"
+#include "../include/sam_log.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -369,7 +369,7 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
             action.slot_idx_diff = slot_idx_diff;
         }
 
-        if (slots_to_use != log_ctx.default_slots_to_use) {
+        if (slots_to_use != log_ctx.default_slots_to_use || set_default_slots) {
             hdr |= SAM_LOG_HDR_SLOTS_TO_USE;
             action.slots_to_use = slots_to_use;
         }
@@ -477,7 +477,6 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
 
     /* If the first action in the buffer does not contain slot idx add it*/
     if (put_first_slot_idx) {
-        log_ctx.starting_slot_idx_end_buffer += log_ctx.last_deleted_default_slots_to_use;
         struct sam_log_packed_action first_action_with_slot_idx;
         first_action_with_slot_idx.total_custom_len = 0;
         uint8_t tmp_buf[SAM_LOG_MAX_ACTION_HEADER_SIZE]; /* Temp buffer for serialized action */
@@ -510,7 +509,6 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
             uint8_t hdr;
             ring_buf_get(action_buf, &hdr, SAM_LOG_BYTE_SIZE_HDR);
             first_action_with_slot_idx.hdr = hdr;
-            LOG_INF("------------------HEADER IS: %u", first_action_with_slot_idx.hdr);
 
             if (hdr & SAM_LOG_HDR_SLOT_IDX) {
                 uint8_t slot_idx[SAM_LOG_BYTE_SIZE_SLOT_IDX];
