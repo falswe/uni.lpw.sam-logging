@@ -645,10 +645,10 @@
                 }
 
                 const actions = [];
-                let defaultSlotsToUse = 1;
+                let defaultSlotsToUse = buffer[0];
                 let currentSlotIdx = 0;
                 let expectedNextSlotIdx = 0;
-                let pos = 0;
+                let pos = 2;
 
                 debug(`Parsing buffer of ${buffer.length} bytes`);
 

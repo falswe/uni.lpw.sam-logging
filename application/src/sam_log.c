@@ -472,8 +472,14 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
     uint8_t action_buffer[SAM_LOG_MAX_ACTION_HEADER_SIZE];
     size_t action_buffer_filled = 0;
 
-    /* Output buffer position */
-    size_t serialize_pos = 0;
+    /* Output buffer position (start from 3rd elements since first and second are for starting
+     * default slots to use and number of actions logged)*/
+    size_t serialize_pos = 2;
+    uint8_t starting_default_slots_to_use = SAM_LOG_DEFAULT_SLOTS_TO_USE;
+    out_buf[0] = starting_default_slots_to_use; /* Placeholder for number of actions logged */
+
+    /* Number of actions logged */
+    uint8_t actions_logged = 0;
 
     /* If the first action in the buffer does not contain slot idx add it*/
     if (put_first_slot_idx) {
@@ -547,6 +553,7 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
         size_t len = serialize_action(&first_action_with_slot_idx, tmp_buf, sizeof(tmp_buf));
         memcpy(out_buf + serialize_pos, tmp_buf, len);
         serialize_pos += len;
+        actions_logged++;
 
         if (first_action_with_slot_idx.total_custom_len > 0) {
             ring_buf_get(custom_buf, out_buf + serialize_pos,
@@ -672,6 +679,7 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
         /* Copy action header to output */
         memcpy(out_buf + serialize_pos, action_buffer, action_size);
         serialize_pos += action_size;
+        actions_logged++;
 
         /* Handle custom data if present */
         if (has_custom_data && custom_data_size > 0) {
@@ -694,6 +702,8 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
         }
     }
 
+    /* Put number of actions logged at the start of the output buffer */
+    out_buf[1] = actions_logged;
     return serialize_pos;
 }
 
