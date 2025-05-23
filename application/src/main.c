@@ -92,7 +92,8 @@ static void showcase_overflow_handling(void) {
 
     sam_log_action(SAM_LOG_TX_DONE, 0, 1999, 0, 1, true, packet_data, sizeof(packet_data));
 
-    for (int i = 0; i < 700; i++) {
+    int i;
+    for (i = 0; i < 300; i++) {
         /* Add a mix of simple and complex entries */
         if (i % 10 == 0) {
             /* Trigger slot index to be logged */
@@ -105,6 +106,11 @@ static void showcase_overflow_handling(void) {
             sam_log_action((i % 5 == 0) ? SAM_LOG_RX_SUCCESS : SAM_LOG_TX_DONE, 0, 2000 + i, 0, 1,
                            false, NULL, 0);
         }
+    }
+    while (i < 700) {
+        /* Log with custom data occasionally */
+        sam_log_action(SAM_LOG_TX_DONE, 0, 2000 + i, 0, 1, false, packet_data, sizeof(packet_data));
+        i++;
     }
 
     /* Add one distinctive entry we should see in the end buffer */
