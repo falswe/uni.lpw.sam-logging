@@ -77,7 +77,7 @@ struct sam_log_ctx {
     uint8_t default_slots_to_use;
     uint32_t current_slot_idx;
     uint8_t last_deleted_default_slots_to_use;
-    uint32_t starting_slot_idx_end_buffer;
+    uint32_t last_deleted_slot_idx;
     struct sam_log_stats stats;
 };
 
@@ -187,7 +187,7 @@ static void reset_log_context(void) {
     log_ctx.default_slots_to_use = SAM_LOG_DEFAULT_SLOTS_TO_USE;
     log_ctx.current_slot_idx = 0;
     log_ctx.last_deleted_default_slots_to_use = SAM_LOG_DEFAULT_SLOTS_TO_USE;
-    log_ctx.starting_slot_idx_end_buffer = 0;
+    log_ctx.last_deleted_slot_idx = 0;
     memset(&log_ctx.stats, 0, sizeof(struct sam_log_stats));
 }
 
@@ -291,7 +291,7 @@ static void make_room_in_buffer(struct ring_buf *action_buf, struct ring_buf *cu
                 ring_buf_get(action_buf, slot_idx, SAM_LOG_BYTE_SIZE_SLOT_IDX);
 
                 /* Update slot index of the oldest action in the end buffer */
-                log_ctx.starting_slot_idx_end_buffer =
+                log_ctx.last_deleted_slot_idx =
                     ((slot_idx[0] << 16) | (slot_idx[1] << 8) | slot_idx[2]);
                 starting_slot_idx_updated = true;
             }
@@ -308,7 +308,7 @@ static void make_room_in_buffer(struct ring_buf *action_buf, struct ring_buf *cu
 
                 /* Update slot index of the oldest action in the end buffer */
                 if (!starting_slot_idx_updated) {
-                    log_ctx.starting_slot_idx_end_buffer += slots_to_use;
+                    log_ctx.last_deleted_slot_idx += slots_to_use;
                 }
             }
             if (hdr & SAM_LOG_HDR_CUSTOM_FIELDS) {
@@ -325,7 +325,7 @@ static void make_room_in_buffer(struct ring_buf *action_buf, struct ring_buf *cu
                 log_ctx.stats.custom_fields_dropped++;
             }
         } else {
-            log_ctx.starting_slot_idx_end_buffer += log_ctx.last_deleted_default_slots_to_use;
+            log_ctx.last_deleted_slot_idx += log_ctx.last_deleted_default_slots_to_use;
         }
 
         log_ctx.stats.actions_dropped++;
@@ -403,6 +403,10 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
         if (ring_buf_space_get(&log_ctx.start_actions) >= action_size &&
             (custom_data_len == 0 ||
              ring_buf_space_get(&log_ctx.start_custom) >= custom_data_len)) {
+            /* Save state of the last action that fit in the start buffer */
+            log_ctx.last_deleted_slot_idx = log_ctx.current_slot_idx;
+            log_ctx.last_deleted_default_slots_to_use = log_ctx.default_slots_to_use;
+
             /* Add to start buffer */
             ret = add_to_buffer(&log_ctx.start_actions, &log_ctx.start_custom, &action, custom_data,
                                 custom_data_len);
@@ -424,8 +428,6 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
         /* Start buffer is full, switch to end buffer permanently */
         LOG_INF("Start buffer full, switching to end buffer");
         log_ctx.start_buffer_full = true;
-        log_ctx.starting_slot_idx_end_buffer = log_ctx.current_slot_idx;
-        log_ctx.last_deleted_default_slots_to_use = log_ctx.default_slots_to_use;
     }
 
     /* If we're here, we need to use the end buffer */
@@ -547,7 +549,7 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
         if (!(first_action_with_slot_idx.hdr & SAM_LOG_HDR_SLOT_IDX)) {
             first_action_with_slot_idx.hdr |= SAM_LOG_HDR_SLOT_IDX;
             first_action_with_slot_idx.slot_idx =
-                log_ctx.starting_slot_idx_end_buffer + log_ctx.last_deleted_default_slots_to_use;
+                log_ctx.last_deleted_slot_idx + log_ctx.last_deleted_default_slots_to_use;
         }
 
         size_t len = serialize_action(&first_action_with_slot_idx, tmp_buf, sizeof(tmp_buf));
