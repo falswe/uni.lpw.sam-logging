@@ -309,7 +309,12 @@ static void make_room_in_buffer(struct ring_buf *action_buf, struct ring_buf *cu
                 /* Update slot index of the oldest action in the end buffer */
                 if (!starting_slot_idx_updated) {
                     log_ctx.last_deleted_slot_idx += slots_to_use;
+                    starting_slot_idx_updated = true;
                 }
+            }
+            /* Update slot index of the oldest action in the end buffer */
+            if (!starting_slot_idx_updated) {
+                log_ctx.last_deleted_slot_idx += log_ctx.last_deleted_default_slots_to_use;
             }
             if (hdr & SAM_LOG_HDR_CUSTOM_FIELDS) {
                 uint8_t len_bytes[SAM_LOG_BYTE_SIZE_TOTAL_CUSTOM_LEN];
@@ -747,22 +752,24 @@ int sam_log_flush(char *log_name, uint32_t epoch_id, size_t *bytes_written) {
     }
 
     /* Process END buffer */
-    memset(serialize_buf, 0, sizeof(serialize_buf));
-    serialize_len = process_buffer(&log_ctx.end_actions, &log_ctx.end_custom, serialize_buf,
-                                   sizeof(serialize_buf), true);
-    LOG_INF("Serialized END buffer contains %u bytes", serialize_len);
+    if (log_ctx.start_buffer_full) {
+        memset(serialize_buf, 0, sizeof(serialize_buf));
+        serialize_len = process_buffer(&log_ctx.end_actions, &log_ctx.end_custom, serialize_buf,
+                                       sizeof(serialize_buf), true);
+        LOG_INF("Serialized END buffer contains %u bytes", serialize_len);
 
-    if (serialize_len > 0) {
-        /* Encode to Z85 */
-        memset(encoded, 0, sizeof(encoded));
-        encoded_len = Z85_encode_with_padding((char *)serialize_buf, encoded, serialize_len);
+        if (serialize_len > 0) {
+            /* Encode to Z85 */
+            memset(encoded, 0, sizeof(encoded));
+            encoded_len = Z85_encode_with_padding((char *)serialize_buf, encoded, serialize_len);
 
-        if (encoded_len > 0 && encoded_len < sizeof(encoded)) {
-            encoded[encoded_len] = '\0';
-            LOG_PRINTK("LOG[%s] END %u %s\n", log_name, epoch_id, encoded);
+            if (encoded_len > 0 && encoded_len < sizeof(encoded)) {
+                encoded[encoded_len] = '\0';
+                LOG_PRINTK("LOG[%s] END %u %s\n", log_name, epoch_id, encoded);
 
-            if (bytes_written) {
-                *bytes_written += encoded_len;
+                if (bytes_written) {
+                    *bytes_written += encoded_len;
+                }
             }
         }
     }
