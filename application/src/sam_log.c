@@ -394,6 +394,7 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
 
     /* Calculate required space */
     uint8_t temp_buf[SAM_LOG_MAX_ACTION_HEADER_SIZE];
+    // TODO: This is done on temp_buf here and on the actual buffer in add_to_buffer.
     size_t action_size = serialize_action(&action, temp_buf, sizeof(temp_buf));
 
     if (action_size == 0) {
@@ -595,55 +596,6 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
         uint8_t m_hdr = (first_byte & SAM_LOG_MASK_M_HDR) >> SAM_LOG_SHIFT_M_HDR;
         uint8_t status = (first_byte & SAM_LOG_MASK_STATUS) >> SAM_LOG_SHIFT_STATUS;
 
-        /* Calculate minimum bytes needed for header */
-        size_t min_required_size = 1;
-
-        if (status == SAM_LOG_UNKNOWN) {
-            min_required_size +=
-                SAM_LOG_BYTE_SIZE_CUSTOM_STATUS - 1;  // High 2 bits already in first byte
-        }
-
-        if (m_hdr) {
-            min_required_size += SAM_LOG_BYTE_SIZE_HDR;
-
-            if (action_buffer_filled < min_required_size) {
-                continue;
-            }
-
-            size_t hdr_pos = 1;
-            if (status == SAM_LOG_UNKNOWN) {
-                hdr_pos += 1;
-            }
-
-            uint8_t hdr = action_buffer[hdr_pos];
-
-            if (hdr & SAM_LOG_HDR_SLOT_IDX) {
-                min_required_size += SAM_LOG_BYTE_SIZE_SLOT_IDX;
-            }
-
-            if (hdr & SAM_LOG_HDR_SLOT_IDX_DIFF) {
-                min_required_size += SAM_LOG_BYTE_SIZE_SLOT_IDX_DIFF;
-            }
-
-            if (hdr & SAM_LOG_HDR_SLOTS_TO_USE) {
-                min_required_size += SAM_LOG_BYTE_SIZE_SLOTS_TO_USE;
-            }
-
-            if (hdr & SAM_LOG_HDR_CUSTOM_FIELDS) {
-                min_required_size += SAM_LOG_BYTE_SIZE_TOTAL_CUSTOM_LEN;
-            }
-        }
-
-        /* Check buffer capacity */
-        if (min_required_size > SAM_LOG_MAX_ACTION_HEADER_SIZE) {
-            break;
-        }
-
-        /* Wait for more data if needed */
-        if (action_buffer_filled < min_required_size) {
-            continue;
-        }
-
         /* Parse complete action header */
         size_t action_size = 1;
         size_t custom_data_size = 0;
@@ -683,7 +635,7 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
             break;
         }
 
-        /* Copy action header to output */
+        /* Copy action to output */
         memcpy(out_buf + serialize_pos, action_buffer, action_size);
         serialize_pos += action_size;
         actions_logged++;
