@@ -7,6 +7,11 @@ JOB_FILE="$SCRIPT_DIR/job.json"
 DOWNLOAD_DIR="$SCRIPT_DIR/downloads"
 CHECK_INTERVAL=10
 
+if [[ $(lsb_release --id -s) == "Zorin" ]]; then
+    echo "Zorin OS detected"
+    CLIENT_PATH="$(dirname "$(readlink -f "$0")")/../../../../low-power/cloves-client/iot_testbed_client.py"
+fi
+
 # Create download directory
 mkdir -p "$DOWNLOAD_DIR"
 
