@@ -207,22 +207,12 @@ int sam_log_init(void) {
 
 /* Add an action to a buffer */
 static int add_to_buffer(struct ring_buf *action_buf, struct ring_buf *custom_buf,
-                         const struct sam_log_packed_action *action, const void *custom_data,
+                         uint8_t *serialized_action, size_t action_len, const void *custom_data,
                          uint16_t custom_data_len) {
-    uint8_t buf[SAM_LOG_MAX_ACTION_HEADER_SIZE]; /* Temp buffer for serialized action */
-    size_t len;
     int ret;
 
-    /* Serialize the action */
-    len = serialize_action(action, buf, sizeof(buf));
-    if (len == 0) {
-        LOG_ERR("Failed to serialize action");
-        log_ctx.stats.actions_dropped++;
-        return -EINVAL;
-    }
-
     /* Check space availability */
-    if (ring_buf_space_get(action_buf) < len ||
+    if (ring_buf_space_get(action_buf) < action_len ||
         (custom_data_len > 0 && ring_buf_space_get(custom_buf) < custom_data_len)) {
         LOG_WRN("Buffer full: action=%zu, custom=%u", ring_buf_space_get(action_buf),
                 ring_buf_space_get(custom_buf));
@@ -231,8 +221,8 @@ static int add_to_buffer(struct ring_buf *action_buf, struct ring_buf *custom_bu
     }
 
     /* Add action to buffer */
-    ret = ring_buf_put(action_buf, buf, len);
-    if (ret < len) {
+    ret = ring_buf_put(action_buf, serialized_action, action_len);
+    if (ret < action_len) {
         LOG_ERR("Failed to add action to buffer");
         log_ctx.stats.actions_dropped++;
         return -EIO;
@@ -393,9 +383,8 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
     }
 
     /* Calculate required space */
-    uint8_t temp_buf[SAM_LOG_MAX_ACTION_HEADER_SIZE];
-    // TODO: This is done on temp_buf here and on the actual buffer in add_to_buffer.
-    size_t action_size = serialize_action(&action, temp_buf, sizeof(temp_buf));
+    uint8_t serialized_action[SAM_LOG_MAX_ACTION_HEADER_SIZE];
+    size_t action_size = serialize_action(&action, serialized_action, sizeof(serialized_action));
 
     if (action_size == 0) {
         LOG_ERR("Failed to calculate action size");
@@ -414,8 +403,8 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
             log_ctx.last_deleted_default_slots_to_use = log_ctx.default_slots_to_use;
 
             /* Add to start buffer */
-            ret = add_to_buffer(&log_ctx.start_actions, &log_ctx.start_custom, &action, custom_data,
-                                custom_data_len);
+            ret = add_to_buffer(&log_ctx.start_actions, &log_ctx.start_custom, serialized_action,
+                                action_size, custom_data, custom_data_len);
 
             if (ret == 0) {
                 /* Successfully added to start buffer */
@@ -442,8 +431,8 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
     make_room_in_buffer(&log_ctx.end_actions, &log_ctx.end_custom, action_size, custom_data_len);
 
     /* Add to end buffer */
-    ret = add_to_buffer(&log_ctx.end_actions, &log_ctx.end_custom, &action, custom_data,
-                        custom_data_len);
+    ret = add_to_buffer(&log_ctx.end_actions, &log_ctx.end_custom, serialized_action, action_size,
+                        custom_data, custom_data_len);
 
     if (ret < 0) {
         LOG_WRN("Failed to add to end buffer: %d", ret);
@@ -477,8 +466,8 @@ int sam_log_get_stats(struct sam_log_stats *stats) {
 static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custom_buf,
                              uint8_t *out_buf, size_t out_size, bool put_first_slot_idx) {
     /* Buffer to hold action header for processing */
-    uint8_t action_buffer[SAM_LOG_MAX_ACTION_HEADER_SIZE];
-    size_t action_buffer_filled = 0;
+    uint8_t sliding_window[SAM_LOG_MAX_ACTION_HEADER_SIZE];
+    size_t busy_window_bytes = 0;
 
     /* Output buffer position (start from 3rd elements since first and second are for starting
      * default slots to use and number of actions logged)*/
@@ -573,26 +562,26 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
     /* Process actions until buffer is empty or output is full */
     while (serialize_pos < out_size) {
         /* Fill sliding window buffer with more data if needed */
-        if (action_buffer_filled < SAM_LOG_MAX_ACTION_HEADER_SIZE) {
-            size_t bytes_needed = SAM_LOG_MAX_ACTION_HEADER_SIZE - action_buffer_filled;
+        if (busy_window_bytes < SAM_LOG_MAX_ACTION_HEADER_SIZE) {
+            size_t free_window_bytes = SAM_LOG_MAX_ACTION_HEADER_SIZE - busy_window_bytes;
             size_t bytes_read =
-                ring_buf_get(action_buf, action_buffer + action_buffer_filled, bytes_needed);
+                ring_buf_get(action_buf, sliding_window + busy_window_bytes, free_window_bytes);
 
-            if (bytes_read == 0 && action_buffer_filled == 0) {
+            if (bytes_read == 0 && busy_window_bytes == 0) {
                 /* No more data */
                 break;
             }
 
-            action_buffer_filled += bytes_read;
+            busy_window_bytes += bytes_read;
         }
 
         /* Need at least one byte to continue */
-        if (action_buffer_filled < 1) {
+        if (busy_window_bytes < 1) {
             break;
         }
 
         /* Parse first byte to get action type */
-        uint8_t first_byte = action_buffer[0];
+        uint8_t first_byte = sliding_window[0];
         uint8_t m_hdr = (first_byte & SAM_LOG_MASK_M_HDR) >> SAM_LOG_SHIFT_M_HDR;
         uint8_t status = (first_byte & SAM_LOG_MASK_STATUS) >> SAM_LOG_SHIFT_STATUS;
 
@@ -607,7 +596,7 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
         }
 
         if (m_hdr) {
-            uint8_t hdr = action_buffer[action_size];
+            uint8_t hdr = sliding_window[action_size];
             action_size += SAM_LOG_BYTE_SIZE_HDR;
 
             if (hdr & SAM_LOG_HDR_SLOT_IDX) {
@@ -625,7 +614,7 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
             if (hdr & SAM_LOG_HDR_CUSTOM_FIELDS) {
                 has_custom_data = true;
                 custom_data_size =
-                    (action_buffer[action_size] << 8) | action_buffer[action_size + 1];
+                    (sliding_window[action_size] << 8) | sliding_window[action_size + 1];
                 action_size += SAM_LOG_BYTE_SIZE_TOTAL_CUSTOM_LEN;
             }
         }
@@ -636,7 +625,7 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
         }
 
         /* Copy action to output */
-        memcpy(out_buf + serialize_pos, action_buffer, action_size);
+        memcpy(out_buf + serialize_pos, sliding_window, action_size);
         serialize_pos += action_size;
         actions_logged++;
 
@@ -652,12 +641,12 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
             serialize_pos += custom_data_size;
         }
 
-        /* Slide window forward */
-        if (action_size < action_buffer_filled) {
-            memmove(action_buffer, action_buffer + action_size, action_buffer_filled - action_size);
-            action_buffer_filled -= action_size;
+        /* Slide window forward, discarding bytes of the parsed action */
+        if (action_size < busy_window_bytes) {
+            memmove(sliding_window, sliding_window + action_size, busy_window_bytes - action_size);
+            busy_window_bytes -= action_size;
         } else {
-            action_buffer_filled = 0;
+            busy_window_bytes = 0;
         }
     }
 
