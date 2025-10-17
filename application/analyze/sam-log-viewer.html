@@ -12,15 +12,12 @@
             --secondary-color: #f8f9fa;
             --border-color: #ddd;
             --error-color: #dc3545;
-
-            /* Status colors */
             --rx-color: #d4edda;
             --tx-color: #d1ecf1;
             --sync-color: #cce5ff;
             --error-bg: #f8d7da;
         }
 
-        /* Base styles */
         * {
             box-sizing: border-box;
         }
@@ -34,9 +31,7 @@
             background-color: #fff;
         }
 
-        h1,
-        h2,
-        h3 {
+        h1, h2, h3 {
             color: var(--primary-color);
             margin-top: 0;
         }
@@ -47,7 +42,6 @@
             margin-bottom: 20px;
         }
 
-        /* Controls */
         .controls {
             margin-bottom: 20px;
         }
@@ -79,7 +73,6 @@
             background-color: var(--primary-light);
         }
 
-        /* Results area */
         .result-container {
             border: 1px solid var(--border-color);
             border-radius: 4px;
@@ -114,7 +107,6 @@
             padding-bottom: 20px;
         }
 
-        /* Tables */
         table {
             width: 100%;
             border-collapse: collapse;
@@ -122,8 +114,7 @@
             font-size: 14px;
         }
 
-        th,
-        td {
+        th, td {
             padding: 10px;
             text-align: left;
             border-bottom: 1px solid var(--border-color);
@@ -134,24 +125,11 @@
             font-weight: 600;
         }
 
-        /* Status colors */
-        .status-rx {
-            background-color: var(--rx-color);
-        }
+        .status-rx { background-color: var(--rx-color); }
+        .status-tx { background-color: var(--tx-color); }
+        .status-sync { background-color: var(--sync-color); }
+        .status-error { background-color: var(--error-bg); }
 
-        .status-tx {
-            background-color: var(--tx-color);
-        }
-
-        .status-sync {
-            background-color: var(--sync-color);
-        }
-
-        .status-error {
-            background-color: var(--error-bg);
-        }
-
-        /* Custom data */
         .custom-data {
             font-family: monospace;
             max-width: 300px;
@@ -166,9 +144,7 @@
             overflow: visible;
         }
 
-        /* Code and pre */
-        pre,
-        code {
+        pre, code {
             font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace;
             font-size: 13px;
         }
@@ -181,7 +157,6 @@
             white-space: pre;
         }
 
-        /* Details/summary */
         details {
             margin-bottom: 15px;
             border: 1px solid var(--border-color);
@@ -203,7 +178,7 @@
 </head>
 
 <body>
-    <h1>SAM Log Analyzer</h1>
+    <h1>SAM Log Analyzer (Bit-Packed Version)</h1>
 
     <div class="controls">
         <p>Paste your SAM log output below to analyze the encoded data:</p>
@@ -219,12 +194,7 @@
     </div>
 
     <script>
-        /**
-         * SAM Log Viewer
-         * A utility for parsing and visualizing SAM protocol logs.
-         */
         (function () {
-            // DOM Elements
             const elements = {
                 inputArea: document.getElementById('input-area'),
                 parseBtn: document.getElementById('parse-btn'),
@@ -234,14 +204,12 @@
                 resultsPanel: document.getElementById('results-panel')
             };
 
-            // Application state
             const state = {
                 debugMode: false,
                 debugMessages: [],
                 currentLogs: []
             };
 
-            // Constants
             const CONSTANTS = {
                 MAX_ACTIONS: 1000,
                 SYNCH_DONE_STATUS: 14,
@@ -260,16 +228,10 @@
                     SCAN: 0x08,
                     CUSTOM_FIELDS: 0x10,
                     DEFAULT_SLOTS_TO_USE: 0x20
-                },
-                // Bit masks
-                MASKS: {
-                    M_HDR: 0x80,
-                    STATUS: 0x7C,
-                    CUSTOM_STATUS_HIGH: 0x03
                 }
             };
 
-            // Z85 Decoder implementation
+            // Z85 Decoder (from original sam-log-viewer.html)
             const Z85 = {
                 // Z85 character set
                 CHARSET: "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#",
@@ -277,7 +239,6 @@
                 // Validates if a string contains only Z85 characters
                 isValid(str) {
                     if (!str || typeof str !== 'string') return false;
-
                     for (let i = 0; i < str.length; i++) {
                         if (this.CHARSET.indexOf(str[i]) === -1) {
                             return false;
@@ -319,247 +280,131 @@
                     }
 
                     // Ensure length is multiple of 5
-                    if (encodedData.length % 5 !== 0) {
-                        const excess = encodedData.length % 5;
-                        encodedData = encodedData.substring(0, encodedData.length - excess);
-                        debug(`Truncated ${excess} chars to make multiple of 5`);
+                    const remainder = encodedData.length % 5;
+                    if (remainder !== 0) {
+                        debug(`Warning: Z85 string length (${encodedData.length}) not a multiple of 5`);
+                        if (hasPadding) {
+                            const paddingNeeded = 5 - remainder;
+                            for (let i = 0; i < paddingNeeded; i++) {
+                                encodedData += 'u';
+                            }
+                            debug(`Padded string to length ${encodedData.length}`);
+                        }
                     }
 
-                    if (encodedData.length === 0) {
-                        debug("No valid encoded data after adjustments");
-                        return new Uint8Array(0);
-                    }
+                    // Calculate decoded size
+                    const decodedSize = Math.floor(encodedData.length * 4 / 5);
+                    const result = new Uint8Array(decodedSize);
 
-                    // Calculate decoded length
-                    const numChunks = encodedData.length / 5;
-                    const decodedLength = numChunks * 4;
-                    debug(`Will decode ${numChunks} chunks to produce ${decodedLength} bytes`);
-
-                    const result = new Uint8Array(decodedLength);
-
-                    // Process each 5-character chunk
-                    for (let i = 0, destIndex = 0; i < encodedData.length; i += 5) {
-                        if (i + 5 > encodedData.length) break;
-
-                        // Convert 5 characters to an integer value
+                    // Decode
+                    for (let i = 0, j = 0; i < encodedData.length; i += 5, j += 4) {
                         let value = 0;
-                        for (let j = 0; j < 5; j++) {
-                            value = value * 85 + lookup[encodedData[i + j]];
+                        for (let k = 0; k < 5; k++) {
+                            value = value * 85 + lookup[encodedData[i + k]];
                         }
 
-                        // Extract 4 bytes from the integer
-                        result[destIndex++] = (value >> 24) & 0xFF;
-                        result[destIndex++] = (value >> 16) & 0xFF;
-                        result[destIndex++] = (value >> 8) & 0xFF;
-                        result[destIndex++] = value & 0xFF;
+                        result[j] = (value >> 24) & 0xFF;
+                        result[j + 1] = (value >> 16) & 0xFF;
+                        result[j + 2] = (value >> 8) & 0xFF;
+                        result[j + 3] = value & 0xFF;
                     }
 
-                    // Handle padding if present
+                    // Handle padding
                     if (hasPadding) {
-                        const outputSize = (numChunks - 1) * 4 + paddingDigit;
-                        debug(`Applying padding: final size = ${outputSize} bytes`);
-                        return result.slice(0, outputSize);
+                        // Padding digit indicates how many valid bytes in last group
+                        const bytesToKeep = paddingDigit; // 1, 2, 3, or 4
+                        const bytesToTrim = 4 - bytesToKeep;
+                        
+                        if (bytesToTrim > 0) {
+                            const trimmed = result.subarray(0, decodedSize - bytesToTrim);
+                            debug(`Padding: keeping ${bytesToKeep} bytes, trimming ${bytesToTrim} bytes. Result: ${decodedSize} -> ${trimmed.length} bytes`);
+                            return trimmed;
+                        } else {
+                            debug(`Padding digit is 4: no trimming needed`);
+                        }
                     }
 
                     return result;
                 }
             };
 
-            /**
-             * Add a debug message
-             */
-            function debug(message) {
-                state.debugMessages.push(message);
-                if (state.debugMode) {
-                    console.log(message);
+            function debug(msg) {
+                state.debugMessages.push(`[${new Date().toISOString().split('T')[1].split('.')[0]}] ${msg}`);
+                if (state.debugMode) console.log(msg);
+            }
+
+            // Bit Reader Class for bit-level parsing
+            class BitReader {
+                constructor(buffer) {
+                    this.buffer = buffer;
+                    this.byteOffset = 0;
+                    this.bitOffset = 0;
+                }
+
+                readBits(numBits) {
+                    if (numBits === 0) return 0;
+                    if (numBits > 32) throw new Error('Cannot read more than 32 bits at once');
+
+                    let result = 0;
+                    let bitsRead = 0;
+
+                    while (bitsRead < numBits) {
+                        if (this.byteOffset >= this.buffer.length) {
+                            throw new Error(`Buffer overflow: trying to read beyond buffer end at byte ${this.byteOffset}`);
+                        }
+
+                        // How many bits are left in the current byte (from MSB to current position)
+                        const bitsAvailableInCurrentByte = 8 - this.bitOffset;
+                        const bitsToReadFromCurrentByte = Math.min(numBits - bitsRead, bitsAvailableInCurrentByte);
+
+                        // Extract bits from current byte
+                        // Shift right to align the bits we want to the LSB position
+                        const shift = bitsAvailableInCurrentByte - bitsToReadFromCurrentByte;
+                        const mask = (1 << bitsToReadFromCurrentByte) - 1;
+                        const bits = (this.buffer[this.byteOffset] >> shift) & mask;
+
+                        // Add these bits to our result
+                        result = (result << bitsToReadFromCurrentByte) | bits;
+                        bitsRead += bitsToReadFromCurrentByte;
+                        this.bitOffset += bitsToReadFromCurrentByte;
+
+                        // Move to next byte if we've consumed all 8 bits
+                        if (this.bitOffset >= 8) {
+                            this.byteOffset++;
+                            this.bitOffset = 0;
+                        }
+                    }
+
+                    return result;
+                }
+
+                alignToByte() {
+                    if (this.bitOffset !== 0) {
+                        this.byteOffset++;
+                        this.bitOffset = 0;
+                    }
+                }
+
+                hasMoreData() {
+                    return this.byteOffset < this.buffer.length || 
+                           (this.byteOffset === this.buffer.length - 1 && this.bitOffset < 8);
+                }
+
+                getPosition() {
+                    return { byte: this.byteOffset, bit: this.bitOffset };
                 }
             }
 
-            /**
-             * Format binary data as a hex dump
-             */
-            function createHexDump(data) {
-                if (!data || data.length === 0) return "Empty data";
+            function parseActionBitPacked(bitReader, defaultSlotsToUse, currentSlotIdx) {
+                const startPos = bitReader.getPosition();
+                debug(`Parsing action at byte ${startPos.byte}, bit ${startPos.bit}`);
 
-                const HEX_CHARS = "0123456789ABCDEF";
-                const BYTES_PER_LINE = 16;
-                let output = [];
+                // Read m_hdr (1 bit) and status (5 bits)
+                const m_hdr = bitReader.readBits(1);
+                const status = bitReader.readBits(5);
+                
+                debug(`Read m_hdr=${m_hdr}, status=${status} (${CONSTANTS.STATUS_NAMES[status] || 'Unknown'})`);
 
-                for (let offset = 0; offset < data.length; offset += BYTES_PER_LINE) {
-                    // Address column
-                    let line = offset.toString(16).padStart(8, '0') + ": ";
-
-                    // Hex columns
-                    const lineEnd = Math.min(offset + BYTES_PER_LINE, data.length);
-                    for (let i = offset; i < lineEnd; i++) {
-                        const byte = data[i];
-                        line += HEX_CHARS[(byte >> 4) & 0xF] + HEX_CHARS[byte & 0xF] + " ";
-                    }
-
-                    // Padding if not a full line
-                    if (lineEnd < offset + BYTES_PER_LINE) {
-                        line += "   ".repeat(offset + BYTES_PER_LINE - lineEnd);
-                    }
-
-                    // ASCII representation
-                    line += " | ";
-                    for (let i = offset; i < lineEnd; i++) {
-                        const byte = data[i];
-                        line += (byte >= 32 && byte <= 126) ? String.fromCharCode(byte) : '.';
-                    }
-
-                    output.push(line);
-                }
-
-                return output.join('\n');
-            }
-
-            /**
-             * Get CSS class for an action status
-             */
-            function getStatusClass(status) {
-                if ([0, 1, 4].includes(status)) return 'status-rx';
-                if (status === 7) return 'status-tx';
-                if (status === CONSTANTS.SYNCH_DONE_STATUS) return 'status-sync';
-                if ([2, 3, 15].includes(status)) return 'status-error';
-                return '';
-            }
-
-            /**
-             * Format header bits as a readable string
-             */
-            function formatHeaderBits(hdr) {
-                if (hdr === undefined) return '-';
-
-                const flagNames = [];
-                if (hdr & CONSTANTS.HEADER_FLAGS.SLOT_IDX) flagNames.push('SLOT_IDX');
-                if (hdr & CONSTANTS.HEADER_FLAGS.SLOTS_TO_USE) flagNames.push('SLOTS_TO_USE');
-                if (hdr & CONSTANTS.HEADER_FLAGS.SLOT_IDX_DIFF) flagNames.push('SLOT_IDX_DIFF');
-                if (hdr & CONSTANTS.HEADER_FLAGS.SCAN) flagNames.push('SCAN');
-                if (hdr & CONSTANTS.HEADER_FLAGS.CUSTOM_FIELDS) flagNames.push('CUSTOM_FIELDS');
-                if (hdr & CONSTANTS.HEADER_FLAGS.DEFAULT_SLOTS_TO_USE) flagNames.push('DEFAULT_SLOTS_TO_USE');
-
-                return flagNames.length > 0 ? flagNames.join(', ') : '-';
-            }
-
-            /**
-             * Check if a buffer position contains a valid action header
-             */
-            function hasValidHeader(buffer, pos) {
-                if (pos >= buffer.length) {
-                    debug(`Position ${pos} is beyond buffer end (${buffer.length})`);
-                    return false;
-                }
-
-                // First byte contains m_hdr and status
-                const firstByte = buffer[pos];
-                const m_hdr = (firstByte & CONSTANTS.MASKS.M_HDR) >> 7;
-                const status = (firstByte & CONSTANTS.MASKS.STATUS) >> 2;
-
-                // Validate status
-                if (status > 30) {
-                    debug(`Invalid status value: ${status}`);
-                    return false;
-                }
-
-                // If extended header, validate header byte
-                if (m_hdr === 1) {
-                    if (pos + 1 >= buffer.length) {
-                        debug(`Not enough bytes for extended header`);
-                        return false;
-                    }
-
-                    // If status is UNKNOWN, we expect custom status which takes another byte
-                    if (status === CONSTANTS.UNKNOWN_STATUS && pos + 2 >= buffer.length) {
-                        debug(`Not enough bytes for custom status`);
-                        return false;
-                    }
-
-                    const hdrPos = (status === CONSTANTS.UNKNOWN_STATUS) ? pos + 2 : pos + 1;
-
-                    if (hdrPos >= buffer.length) {
-                        debug(`Not enough bytes for header`);
-                        return false;
-                    }
-
-                    const hdr = buffer[hdrPos];
-                    if (hdr > 63) {
-                        debug(`Invalid header value: ${hdr}`);
-                        return false;
-                    }
-                }
-
-                return true;
-            }
-
-            /**
-             * Calculate total length of an action at buffer position
-             */
-            function getActionLength(buffer, pos) {
-                const firstByte = buffer[pos];
-                const m_hdr = (firstByte & CONSTANTS.MASKS.M_HDR) >> 7;
-                const status = (firstByte & CONSTANTS.MASKS.STATUS) >> 2;
-
-                // Simple action with no extended header
-                if (m_hdr === 0) {
-                    return 1;
-                }
-
-                // For custom status, we need an extra byte
-                let offset = 1;
-                if (status === CONSTANTS.UNKNOWN_STATUS) {
-                    offset = 2;
-                }
-
-                // Extended header
-                if (pos + offset >= buffer.length) {
-                    debug(`Buffer too short for extended header at ${pos}`);
-                    return offset;
-                }
-
-                const hdr = buffer[pos + offset];
-                let size = offset + 1;  // Base size with header
-
-                // Add size for each field based on header bits
-                if (hdr & CONSTANTS.HEADER_FLAGS.SLOT_IDX) {
-                    size += 3;  // 24-bit slot index
-                }
-
-                if (hdr & CONSTANTS.HEADER_FLAGS.SLOT_IDX_DIFF) {
-                    size += 2;  // 16-bit slot index difference
-                }
-
-                if (hdr & CONSTANTS.HEADER_FLAGS.SLOTS_TO_USE) {
-                    size += 1;  // 8-bit slots to use
-                }
-
-                // Add custom data size if present
-                if (hdr & CONSTANTS.HEADER_FLAGS.CUSTOM_FIELDS) {
-                    size += 2;  // 16-bit length field
-
-                    // Read the custom data length
-                    if (pos + size <= buffer.length) {
-                        const customLength = (buffer[pos + size - 2] << 8) | buffer[pos + size - 1];
-                        size += customLength;
-                        debug(`Action at ${pos} has ${customLength} bytes of custom data`);
-                    }
-                }
-
-                return size;
-            }
-
-            /**
-             * Parse a single action from the buffer
-             */
-            function parseAction(buffer, pos, defaultSlotsToUse, currentSlotIdx) {
-                const startPos = pos;
-
-                // Read first byte: m_hdr and status
-                const firstByte = buffer[pos++];
-                const m_hdr = (firstByte & CONSTANTS.MASKS.M_HDR) >> 7;
-                const status = (firstByte & CONSTANTS.MASKS.STATUS) >> 2;
-
-                // Create base action object
                 const action = {
                     status,
                     statusName: CONSTANTS.STATUS_NAMES[status] || `Unknown (${status})`,
@@ -567,57 +412,55 @@
                     slotsToUse: defaultSlotsToUse
                 };
 
-                // Process custom status if present
+                // Process custom status if present (10 bits)
                 if (status === CONSTANTS.UNKNOWN_STATUS) {
-                    if (pos < buffer.length) {
-                        // Get high 2 bits from first byte (bits 0-1) and low 8 bits from second byte
-                        const highBits = firstByte & CONSTANTS.MASKS.CUSTOM_STATUS_HIGH;
-                        const lowBits = buffer[pos++];
-                        action.customStatus = (highBits << 8) | lowBits;
-                        debug(`Custom status: ${action.customStatus}`);
-                    } else {
-                        debug(`Buffer too short for custom status`);
-                    }
+                    const customStatus = bitReader.readBits(10);
+                    action.customStatus = customStatus;
+                    debug(`Custom status: ${customStatus}`);
                 }
 
                 // Process extended header if present
-                if (m_hdr === 1 && pos < buffer.length) {
-                    const hdr = buffer[pos++];
+                if (m_hdr === 1) {
+                    const hdr = bitReader.readBits(8);
                     action.hdr = hdr;
+                    debug(`Header flags: 0x${hdr.toString(16).padStart(2, '0')}`);
 
-                    // Process slot index
-                    if ((hdr & CONSTANTS.HEADER_FLAGS.SLOT_IDX) && pos + 3 <= buffer.length) {
-                        action.slotIdx = (buffer[pos] << 16) | (buffer[pos + 1] << 8) | buffer[pos + 2];
-                        pos += 3;
+                    // Process slot index (24 bits)
+                    if (hdr & CONSTANTS.HEADER_FLAGS.SLOT_IDX) {
+                        action.slotIdx = bitReader.readBits(24);
+                        debug(`Slot index: ${action.slotIdx}`);
                     }
 
-                    // Process slot index difference
-                    if ((hdr & CONSTANTS.HEADER_FLAGS.SLOT_IDX_DIFF) && pos + 2 <= buffer.length) {
-                        let diff = (buffer[pos] << 8) | buffer[pos + 1];
-                        // Handle sign bit
+                    // Process slot index difference (16 bits, signed)
+                    if (hdr & CONSTANTS.HEADER_FLAGS.SLOT_IDX_DIFF) {
+                        let diff = bitReader.readBits(16);
                         if (diff & 0x8000) {
                             diff = -(0x10000 - diff);
                         }
                         action.slotIdxDiff = diff;
-                        pos += 2;
+                        debug(`Slot index diff: ${diff}`);
                     }
 
-                    // Process slots to use
-                    if ((hdr & CONSTANTS.HEADER_FLAGS.SLOTS_TO_USE) && pos < buffer.length) {
-                        action.slotsToUse = buffer[pos++];
+                    // Process slots to use (8 bits)
+                    if (hdr & CONSTANTS.HEADER_FLAGS.SLOTS_TO_USE) {
+                        action.slotsToUse = bitReader.readBits(8);
+                        debug(`Slots to use: ${action.slotsToUse}`);
                     }
 
-                    // Process custom data
-                    if ((hdr & CONSTANTS.HEADER_FLAGS.CUSTOM_FIELDS) && pos + 2 <= buffer.length) {
-                        const dataLength = (buffer[pos] << 8) | buffer[pos + 1];
+                    // Process custom data (16 bits length + data)
+                    if (hdr & CONSTANTS.HEADER_FLAGS.CUSTOM_FIELDS) {
+                        const dataLength = bitReader.readBits(16);
                         action.customDataLength = dataLength;
-                        pos += 2;
+                        debug(`Custom data length: ${dataLength}`);
 
-                        // Extract the custom data if available
-                        if (dataLength > 0 && pos + dataLength <= buffer.length) {
-                            action.customData = Array.from(buffer.slice(pos, pos + dataLength))
-                                .map(b => b.toString(16).padStart(2, '0'));
-                            pos += dataLength;
+                        if (dataLength > 0) {
+                            // Read custom data bytes - NO byte alignment, fully bit-packed
+                            const customDataBytes = [];
+                            for (let i = 0; i < dataLength; i++) {
+                                customDataBytes.push(bitReader.readBits(8));
+                            }
+                            action.customData = customDataBytes.map(b => b.toString(16).padStart(2, '0'));
+                            debug(`Custom data: ${action.customData.join(' ')}`);
                         }
                     }
 
@@ -631,163 +474,182 @@
                     }
                 }
 
-                debug(`Parsed action: ${action.statusName} at slot ${action.slotIdx}`);
-                return { action, newPos: pos };
+                const endPos = bitReader.getPosition();
+                debug(`Parsed ${action.statusName} - ended at byte ${endPos.byte}, bit ${endPos.bit}`);
+                
+                return action;
             }
 
-            /**
-             * Parse binary log data into action objects
-             */
-            function parseLogData(buffer) {
-                if (!buffer || buffer.length === 0) {
-                    debug("Empty buffer");
+            function parseLogDataBitPacked(buffer) {
+                if (!buffer || buffer.length < 2) {
+                    debug("Buffer too short");
                     return { actions: [] };
                 }
 
                 const actions = [];
                 let defaultSlotsToUse = buffer[0];
+                const numActions = buffer[1];
+                
+                debug(`Parsing buffer: ${buffer.length} bytes, ${numActions} actions expected, default slots: ${defaultSlotsToUse}`);
+                debug(`Buffer hex: ${Array.from(buffer).map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
+
+                // Create bit reader starting at byte 2 (after header bytes)
+                const bitReader = new BitReader(buffer.slice(2));
+                
                 let currentSlotIdx = 0;
                 let expectedNextSlotIdx = 0;
-                let pos = 2;
 
-                debug(`Parsing buffer of ${buffer.length} bytes`);
+                try {
+                    for (let i = 0; i < numActions && bitReader.hasMoreData(); i++) {
+                        const expectedSlotIdx = expectedNextSlotIdx;
+                        debug(`\n=== Action ${i + 1}/${numActions} ===`);
+                        const action = parseActionBitPacked(bitReader, defaultSlotsToUse, expectedSlotIdx);
 
-                while (pos < buffer.length) {
-                    // Validate action header
-                    if (!hasValidHeader(buffer, pos)) {
-                        debug(`Invalid header at ${pos}, stopping parse`);
-                        break;
+                        // Update slot tracking
+                        if (action.hdr && (action.hdr & CONSTANTS.HEADER_FLAGS.SLOT_IDX)) {
+                            expectedNextSlotIdx = action.slotIdx + action.slotsToUse;
+                            debug(`Action has explicit slot_idx=${action.slotIdx}, next expected=${expectedNextSlotIdx}`);
+                        } else {
+                            expectedNextSlotIdx += action.slotsToUse;
+                            debug(`Action uses relative positioning, next expected=${expectedNextSlotIdx}`);
+                        }
+
+                        // Update current slot tracking
+                        if (action.status === CONSTANTS.SYNCH_DONE_STATUS) {
+                            currentSlotIdx = action.slotIdx;
+                        } else {
+                            currentSlotIdx = action.slotIdx + action.slotsToUse;
+                        }
+
+                        // Update default slots if specified
+                        if (action.setsDefaultSlots) {
+                            defaultSlotsToUse = action.slotsToUse;
+                            debug(`Updated default slots to ${defaultSlotsToUse}`);
+                        }
+
+                        actions.push(action);
+
+                        if (actions.length >= CONSTANTS.MAX_ACTIONS) {
+                            debug(`Maximum actions limit reached`);
+                            break;
+                        }
                     }
-
-                    // Get action length
-                    const actionLength = getActionLength(buffer, pos);
-
-                    // Ensure we have enough buffer
-                    if (pos + actionLength > buffer.length) {
-                        debug(`Action at ${pos} would exceed buffer bounds`);
-                        break;
-                    }
-
-                    // Calculate the expected slot index before parsing
-                    const expectedSlotIdx = expectedNextSlotIdx;
-
-                    // Parse the action with the expected slot index
-                    const { action, newPos } = parseAction(buffer, pos, defaultSlotsToUse, expectedSlotIdx);
-
-                    // Update slot tracking
-                    if (action.hdr & CONSTANTS.HEADER_FLAGS.SLOT_IDX) {
-                        // If action has explicit slot index, use that as the base
-                        expectedNextSlotIdx = action.slotIdx + action.slotsToUse;
-                    } else {
-                        // Otherwise increment from the expected position
-                        expectedNextSlotIdx += action.slotsToUse;
-                    }
-
-                    // Sanity check parsed values
-                    if (action.slotIdx > 1000000 || action.slotsToUse > 100) {
-                        debug(`Unreasonable slot values detected, stopping parse`);
-                        break;
-                    }
-
-                    // Add action to results
-                    actions.push(action);
-
-                    // Update current slot tracking
-                    if (action.status === CONSTANTS.SYNCH_DONE_STATUS) {
-                        currentSlotIdx = action.slotIdx;
-                    } else {
-                        currentSlotIdx = action.slotIdx + action.slotsToUse;
-                    }
-
-                    // Update default slots if specified
-                    if (action.setsDefaultSlots) {
-                        defaultSlotsToUse = action.slotsToUse;
-                    }
-
-                    // Move to next action
-                    pos = newPos;
-
-                    // Safety check
-                    if (actions.length >= CONSTANTS.MAX_ACTIONS) {
-                        debug(`Maximum actions limit (${CONSTANTS.MAX_ACTIONS}) reached`);
-                        break;
-                    }
+                } catch (error) {
+                    debug(`Error parsing actions: ${error.message}`);
+                    console.error(error);
                 }
 
-                debug(`Found ${actions.length} actions`);
+                debug(`\nSuccessfully parsed ${actions.length} actions`);
                 return { actions };
             }
 
-            /**
-             * Extract Z85 log data from a log line
-             */
-            function extractZ85Data(line) {
-                const logMatch = line.match(/LOG\[([^\]]+)\]\s+(START|END)\s+(\d+)\s+(.+)/);
-
-                if (!logMatch) return null;
-
-                const [_, logName, section, epochId, encodedData] = logMatch;
-
-                const cleanedEncoded = encodedData.replace(/\s+/g, '');  // Just in case
-
-                if (!Z85.isValid(cleanedEncoded)) {
-                    debug(`Invalid Z85 data in log: ${cleanedEncoded.substring(0, 20)}...`);
-                    return null;
+            function hexDump(buffer) {
+                const output = [];
+                for (let i = 0; i < buffer.length; i += 16) {
+                    const hex = Array.from(buffer.slice(i, i + 16))
+                        .map(b => b.toString(16).padStart(2, '0'))
+                        .join(' ');
+                    const ascii = Array.from(buffer.slice(i, i + 16))
+                        .map(b => (b >= 32 && b < 127) ? String.fromCharCode(b) : '.')
+                        .join('');
+                    output.push(`${i.toString(16).padStart(4, '0')}: ${hex.padEnd(48, ' ')}  ${ascii}`);
                 }
-
-                debug(`Found log: ${logName} ${section} ${epochId}`);
-
-                return {
-                    logName,
-                    section,
-                    epochId: parseInt(epochId),
-                    encodedData: cleanedEncoded
-                };
+                return output.join('\n');
             }
 
-            /**
-             * Process full log text and parse all log entries
-             */
-            function processLogText(text) {
-                if (!text || typeof text !== 'string') {
-                    return [];
-                }
+            function getStatusClass(status) {
+                if ([0, 1, 4].includes(status)) return 'status-rx';
+                if (status === 7) return 'status-tx';
+                if (status === CONSTANTS.SYNCH_DONE_STATUS) return 'status-sync';
+                if ([2, 3, 15].includes(status)) return 'status-error';
+                return '';
+            }
 
+            function formatHeaderBits(hdr) {
+                if (hdr === undefined) return '-';
+                const flagNames = [];
+                if (hdr & CONSTANTS.HEADER_FLAGS.SLOT_IDX) flagNames.push('SLOT_IDX');
+                if (hdr & CONSTANTS.HEADER_FLAGS.SLOTS_TO_USE) flagNames.push('SLOTS_TO_USE');
+                if (hdr & CONSTANTS.HEADER_FLAGS.SLOT_IDX_DIFF) flagNames.push('SLOT_IDX_DIFF');
+                if (hdr & CONSTANTS.HEADER_FLAGS.SCAN) flagNames.push('SCAN');
+                if (hdr & CONSTANTS.HEADER_FLAGS.CUSTOM_FIELDS) flagNames.push('CUSTOM_FIELDS');
+                if (hdr & CONSTANTS.HEADER_FLAGS.DEFAULT_SLOTS_TO_USE) flagNames.push('DEFAULT_SLOTS_TO_USE');
+                return flagNames.length > 0 ? flagNames.join(', ') : '-';
+            }
+
+            function processLogText(inputText) {
+                const lines = inputText.split('\n').filter(line => line.trim());
+                const logPattern = /LOG\[([^\]]+)\]\s+(START|END)\s+(\d+)\s+(.+)/;
                 const logs = [];
-                const lines = text.split('\n');
-                // now matches “[hh:mm:ss.mmm,uuu] …”
-                const timestampRe = /^\[\d{2}:\d{2}:\d{2}\.\d{3},\d{3}\]/;
 
                 for (let i = 0; i < lines.length; i++) {
                     let line = lines[i].trim();
-                    if (!line.startsWith('LOG[')) {
+                    
+                    // Skip lines that don't start with LOG[
+                    if (!line.includes('LOG[')) {
                         continue;
                     }
 
-                    // collect the LOG[...] line plus any wrapped Z85 lines
+                    // Find the LOG[ marker in the line
+                    const logStart = line.indexOf('LOG[');
+                    if (logStart === -1) continue;
+                    
+                    line = line.substring(logStart);
+
+                    // Collect the LOG[...] line plus any wrapped Z85 continuation lines
+                    // Continuation lines don't have timestamps and don't start with LOG[
                     let block = line;
                     let j = i + 1;
-                    while (j < lines.length && !timestampRe.test(lines[j].trim())) {
-                        block += ' ' + lines[j].trim();
+                    const timestampRe = /^\[\d{2}:\d{2}:\d{2}\.\d{3},\d{3}\]/;
+                    
+                    while (j < lines.length) {
+                        const nextLine = lines[j].trim();
+                        // Stop if we hit another timestamped line or another LOG[ line
+                        if (timestampRe.test(nextLine) || nextLine.includes('LOG[')) {
+                            break;
+                        }
+                        // This is a continuation line with Z85 data
+                        if (nextLine.length > 0) {
+                            block += nextLine;
+                        }
                         j++;
                     }
                     i = j - 1;
 
-                    block = block.replace(/\s+/g, ' ');
+                    const match = block.match(logPattern);
+                    if (!match) {
+                        debug(`Failed to parse log line: ${block.substring(0, 50)}...`);
+                        continue;
+                    }
 
-                    const logInfo = extractZ85Data(block);
-                    if (!logInfo) continue;
+                    const [, logName, section, epochId, encodedData] = match;
+                    debug(`Found log: ${logName} ${section} ${epochId}`);
 
                     try {
-                        const decodedData = Z85.decode(logInfo.encodedData);
-                        if (!decodedData || decodedData.length === 0) continue;
+                        const cleanedEncoded = encodedData.trim();
+                        debug(`Z85 string length: ${cleanedEncoded.length}`);
+                        
+                        const decodedData = Z85.decode(cleanedEncoded);
+                        if (decodedData.length === 0) {
+                            debug(`Failed to decode Z85 data`);
+                            continue;
+                        }
 
-                        const { actions } = parseLogData(decodedData);
+                        debug(`Decoded ${decodedData.length} bytes`);
+                        
+                        const { actions } = parseLogDataBitPacked(decodedData);
                         if (!actions || actions.length === 0) continue;
 
-                        logs.push({ ...logInfo, actions, decodedData });
+                        logs.push({
+                            logName,
+                            section,
+                            epochId: parseInt(epochId),
+                            encodedData: cleanedEncoded,
+                            decodedData,
+                            actions
+                        });
                     } catch (e) {
-                        debug(`Error processing log "${logInfo.logName}": ${e.message}`);
+                        debug(`Error processing log "${logName}": ${e.message}`);
                         console.error(e);
                     }
                 }
@@ -796,9 +658,6 @@
                 return logs;
             }
 
-            /**
-             * Render log summary
-             */
             function renderSummary(logs) {
                 if (!logs || logs.length === 0) {
                     elements.summaryPanel.innerHTML = '<p>No valid logs found.</p>';
@@ -806,18 +665,15 @@
                 }
 
                 let html = '<h2>Log Summary</h2>';
-
                 logs.forEach((log, index) => {
                     html += `
                     <div class="summary-log" data-log-index="${index}">
                         ${log.logName} - ${log.section} (Epoch ${log.epochId}): ${log.actions.length} actions
-                    </div>
-                `;
+                    </div>`;
                 });
 
                 elements.summaryPanel.innerHTML = html;
 
-                // Add click handlers
                 document.querySelectorAll('.summary-log').forEach(el => {
                     el.addEventListener('click', () => {
                         const logIndex = el.getAttribute('data-log-index');
@@ -828,9 +684,6 @@
                 });
             }
 
-            /**
-             * Render detailed log sections
-             */
             function renderDetails(logs) {
                 if (!logs || logs.length === 0) {
                     elements.resultsPanel.innerHTML = '';
@@ -843,29 +696,23 @@
                     html += `
                     <div id="log-section-${logIndex}" class="log-section">
                         <h2>Log: ${log.logName}, Section: ${log.section}, Epoch: ${log.epochId}</h2>
-                        <p><strong>Found ${log.actions.length} actions</strong></p>
-                `;
+                        <p><strong>Found ${log.actions.length} actions</strong></p>`;
 
-                    // Z85 encoded data
                     html += `
                     <details ${state.debugMode ? 'open' : ''}>
                         <summary>Z85 Encoded Data</summary>
                         <pre>${log.encodedData}</pre>
-                    </details>
-                `;
+                    </details>`;
 
-                    // Hex dump of decoded data
                     if (log.decodedData && log.decodedData.length > 0) {
                         html += `
                         <details ${state.debugMode ? 'open' : ''}>
-                            <summary>Binary Data (Hex Dump)</summary>
-                            <pre>${createHexDump(log.decodedData)}</pre>
-                        </details>
-                    `;
+                            <summary>Hex Dump of Decoded Data (${log.decodedData.length} bytes)</summary>
+                            <pre>${hexDump(log.decodedData)}</pre>
+                        </details>`;
                     }
 
-                    // Actions table
-                    if (log.actions.length > 0) {
+                    if (log.actions && log.actions.length > 0) {
                         html += `
                         <table>
                             <thead>
@@ -873,50 +720,34 @@
                                     <th>#</th>
                                     <th>Status</th>
                                     <th>Custom Status</th>
-                                    <th>Header Bits</th>
+                                    <th>Header Flags</th>
                                     <th>Slot Index</th>
-                                    <th>Slots To Use</th>
+                                    <th>Slots Used</th>
                                     <th>Sets Default</th>
                                     <th>Slot Diff</th>
                                     <th>Custom Data</th>
                                 </tr>
                             </thead>
-                            <tbody>
-                    `;
-                        let end_slot_idx_unknown = false;
-                        if (log.section === 'END') {
-                            end_slot_idx_unknown = true;
-                        }
-                        // Add rows for each action
-                        log.actions.forEach((action, index) => {
-                            const rowClass = getStatusClass(action.status);
+                            <tbody>`;
 
-                            if (action.hdr & CONSTANTS.HEADER_FLAGS.SLOT_IDX) {
-                                end_slot_idx_unknown = false;
-                            }
-
+                        log.actions.forEach((action, idx) => {
                             html += `
-                            <tr class="${rowClass}">
-                                <td>${index + 1}</td>
-                                <td>${action.statusName} (${action.status})</td>
+                            <tr class="${getStatusClass(action.status)}">
+                                <td>${idx + 1}</td>
+                                <td>${action.statusName}</td>
                                 <td>${action.customStatus !== undefined ? action.customStatus : '-'}</td>
                                 <td>${formatHeaderBits(action.hdr)}</td>
-                                <td>${(!end_slot_idx_unknown)
-                                    ? action.slotIdx
-                                    : `x + ${action.slotIdx}`
-                                }</td>
+                                <td>${action.slotIdx}</td>
                                 <td>${action.slotsToUse}</td>
                                 <td>${action.setsDefaultSlots ? 'Yes' : 'No'}</td>
                                 <td>${action.slotIdxDiff !== undefined ? action.slotIdxDiff : '-'}</td>
                                 <td class="custom-data">${action.customData ? action.customData.join(' ') : '-'}</td>
-                            </tr>
-                        `;
+                            </tr>`;
                         });
 
                         html += `
                             </tbody>
-                        </table>
-                    `;
+                        </table>`;
                     } else {
                         html += `<p>No valid actions found in this log.</p>`;
                     }
@@ -927,9 +758,6 @@
                 elements.resultsPanel.innerHTML = html;
             }
 
-            /**
-             * Update debug panel
-             */
             function updateDebugPanel() {
                 if (state.debugMessages.length === 0) {
                     elements.debugPanel.innerHTML = '';
@@ -938,61 +766,41 @@
 
                 elements.debugPanel.innerHTML = `
                 <h3>Debug Information</h3>
-                <pre>${state.debugMessages.join('\n')}</pre>
-            `;
+                <pre>${state.debugMessages.join('\n')}</pre>`;
                 elements.debugPanel.style.display = state.debugMode ? 'block' : 'none';
             }
 
-            /**
-             * Main parser function
-             */
             function parseAndRender() {
-                // Reset state
                 state.debugMessages = [];
-
-                // Get input text
                 const inputText = elements.inputArea.value.trim();
+                
                 if (!inputText) {
                     elements.summaryPanel.innerHTML = '<p>No input provided.</p>';
                     elements.resultsPanel.innerHTML = '';
                     return;
                 }
 
-                // Process logs
                 const logs = processLogText(inputText);
                 state.currentLogs = logs;
 
-                // Update UI
                 updateDebugPanel();
                 renderSummary(logs);
                 renderDetails(logs);
             }
 
-            /**
-             * Toggle debug mode
-             */
             function toggleDebugMode() {
                 state.debugMode = !state.debugMode;
                 elements.debugPanel.style.display = state.debugMode ? 'block' : 'none';
-
-                // Re-render current logs with new debug setting
                 renderDetails(state.currentLogs);
             }
 
-            /**
-             * Initialize the application
-             */
             function initialize() {
-                // Set up event listeners
                 elements.parseBtn.addEventListener('click', parseAndRender);
                 elements.toggleDebugBtn.addEventListener('click', toggleDebugMode);
-
-                // Initial UI setup
                 elements.debugPanel.style.display = 'none';
                 elements.summaryPanel.innerHTML = '<p>Enter log data and click "Parse Logs"</p>';
             }
 
-            // Initialize when DOM is ready
             initialize();
         })();
     </script>
