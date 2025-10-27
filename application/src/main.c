@@ -21,15 +21,15 @@ static void showcase_basic_logging(void) {
     LOG_INF("=== Basic Logging Demo ===");
 
     /* Simple status log */
-    sam_log_action(SAM_LOG_RX_SUCCESS, 0, 15, 0, 1, false, NULL, 0);
+    sam_log_action(SAM_LOG_RX_SUCCESS, 0, 15, 0, 1, NULL, 0);
     LOG_INF("Logged RX_SUCCESS status");
 
     /* Log with specific slot index */
-    sam_log_action(SAM_LOG_TX_DONE, 0, 42, 0, 1, false, NULL, 0);
+    sam_log_action(SAM_LOG_TX_DONE, 0, 42, 0, 1, NULL, 0);
     LOG_INF("Logged TX_DONE at slot 42");
 
     /* Log with slot difference */
-    sam_log_action(SAM_LOG_RX_SUCCESS, 0, 50, 2, 1, false, NULL, 0);
+    sam_log_action(SAM_LOG_RX_SUCCESS, 0, 50, 2, 1, NULL, 0);
     LOG_INF("Logged RX_SUCCESS with slot_idx_diff=2");
 
     /* Flush logs */
@@ -43,11 +43,11 @@ static void showcase_custom_data(void) {
     LOG_INF("=== Custom Data Logging Demo ===");
 
     /* Log with 16 bytes of custom data */
-    sam_log_action(SAM_LOG_RX_SUCCESS, 0, 100, 0, 1, false, custom_data_buffer, 16);
+    sam_log_action(SAM_LOG_RX_SUCCESS, 0, 100, 0, 1, custom_data_buffer, 16);
     LOG_INF("Logged RX_SUCCESS with 16 bytes of custom data");
 
     /* Log with 32 bytes of custom data */
-    sam_log_action(SAM_LOG_TX_DONE, 0, 101, 0, 2, false, custom_data_buffer, 32);
+    sam_log_action(SAM_LOG_TX_DONE, 0, 101, 0, 2, custom_data_buffer, 32);
     LOG_INF("Logged TX_DONE with 32 bytes of custom data");
 
     /* Flush logs */
@@ -64,15 +64,14 @@ static void showcase_epoch_simulation(void) {
     uint8_t packet_data[4] = {0xDE, 0xAD, 0xBE, 0xEF};
 
     /* Simulate an epoch sequence */
-    sam_log_action(SAM_LOG_RX_LISTEN_LATE, 0, base_slot, 0, 1, false, NULL, 0);
-    sam_log_action(SAM_LOG_RX_SUCCESS, 0, base_slot + 1, 0, 1, false, packet_data,
-                   sizeof(packet_data));
-    sam_log_action(SAM_LOG_TX_DONE, 0, base_slot + 2, 0, 2, true, NULL, 0);
-    sam_log_action(SAM_LOG_SYNCH_DONE, 0, base_slot + 10, 0, 1, false, NULL, 0);
-    sam_log_action(SAM_LOG_SKIP_SUCCESS, 0, base_slot + 11, 0, 5, false, NULL, 0);
-    sam_log_action(SAM_LOG_RX_TIMEOUT, 0, base_slot + 12, 0, 1, false, NULL, 0);
-    sam_log_action(SAM_LOG_TX_SCHED_LATE, 0, base_slot + 20, 2, 1, false, NULL, 0);
-    sam_log_action(SAM_LOG_SYNCH_FAIL, 0, base_slot + 21, 0, 1, false, NULL, 0);
+    sam_log_action(SAM_LOG_RX_LISTEN_LATE, 0, base_slot, 0, 1, NULL, 0);
+    sam_log_action(SAM_LOG_RX_SUCCESS, 0, base_slot + 1, 0, 1, packet_data, sizeof(packet_data));
+    sam_log_action(SAM_LOG_TX_DONE, 0, base_slot + 2, 0, 2, NULL, 0);
+    sam_log_action(SAM_LOG_SYNCH_DONE, 0, base_slot + 10, 0, 1, NULL, 0);
+    sam_log_action(SAM_LOG_SKIP_SUCCESS, 0, base_slot + 11, 0, 5, NULL, 0);
+    sam_log_action(SAM_LOG_RX_TIMEOUT, 0, base_slot + 12, 0, 1, NULL, 0);
+    sam_log_action(SAM_LOG_TX_SCHED_LATE, 0, base_slot + 20, 2, 1, NULL, 0);
+    sam_log_action(SAM_LOG_SYNCH_FAIL, 0, base_slot + 21, 0, 1, NULL, 0);
 
     /* Flush logs */
     size_t bytes_written;
@@ -90,7 +89,7 @@ static void showcase_overflow_handling(void) {
     /* Fill the buffer with many entries to trigger overflow */
     LOG_INF("Adding 700 log entries to trigger overflow...");
 
-    sam_log_action(SAM_LOG_TX_DONE, 0, 1999, 0, 1, true, packet_data, sizeof(packet_data));
+    sam_log_action(SAM_LOG_TX_DONE, 0, 1999, 0, 1, packet_data, sizeof(packet_data));
 
     int i;
     for (i = 0; i < 300; i++) {
@@ -99,22 +98,21 @@ static void showcase_overflow_handling(void) {
             /* Trigger slot index to be logged */
             i++;
             /* Log with custom data occasionally */
-            sam_log_action(SAM_LOG_TX_DONE, 0, 2000 + i, 0, 1, false, packet_data,
-                           sizeof(packet_data));
+            sam_log_action(SAM_LOG_TX_DONE, 0, 2000 + i, 0, 1, packet_data, sizeof(packet_data));
         } else {
             /* Simple status log for most entries */
             sam_log_action((i % 5 == 0) ? SAM_LOG_RX_SUCCESS : SAM_LOG_TX_DONE, 0, 2000 + i, 0, 1,
-                           false, NULL, 0);
+                           NULL, 0);
         }
     }
     while (i < 700) {
         /* Log with custom data occasionally */
-        sam_log_action(SAM_LOG_TX_DONE, 0, 2000 + i, 0, 1, false, packet_data, sizeof(packet_data));
+        sam_log_action(SAM_LOG_TX_DONE, 0, 2000 + i, 0, 1, packet_data, sizeof(packet_data));
         i++;
     }
 
     /* Add one distinctive entry we should see in the end buffer */
-    sam_log_action(SAM_LOG_SYNCH_DONE, 0, 5000, 0, 1, false, "FINAL ENTRY", 11);
+    sam_log_action(SAM_LOG_SYNCH_DONE, 0, 5000, 0, 1, "FINAL ENTRY", 11);
 
     /* Flush the logs */
     size_t bytes_written;
@@ -125,6 +123,25 @@ static void showcase_overflow_handling(void) {
     if (sam_log_get_stats(&stats) == 0) {
         LOG_INF("Overflow test complete, should see START and END logs");
     }
+}
+
+static void showcase_dynamic_default_slots(void) {
+    LOG_INF("=== Dynamic Default Slots Demo ===");
+
+    int prev_slot_idx = 1;
+    /* Log entries with changing default slots_to_use */
+    for (uint8_t defaults = 2; defaults <= 5; defaults++) {
+        for (int i = 0; i < 6; i++) {
+            prev_slot_idx += defaults;
+            sam_log_action(SAM_LOG_RX_SUCCESS, 0, prev_slot_idx, 0, defaults, NULL, 0);
+        }
+        LOG_INF("Logged 6 entries with slots_to_use=%u", defaults);
+    }
+
+    /* Flush logs */
+    size_t bytes_written;
+    sam_log_flush("DYNAMIC_SLOTS", 5, &bytes_written);
+    LOG_INF("Dynamic default slots logs flushed successfully");
 }
 
 /* Application main entry point */
@@ -156,6 +173,9 @@ int main(void) {
     k_sleep(K_MSEC(100));
 
     showcase_overflow_handling();
+    k_sleep(K_MSEC(100));
+
+    showcase_dynamic_default_slots();
     k_sleep(K_MSEC(100));
 
     LOG_INF("Showcase complete!");

@@ -9,6 +9,9 @@
 #define SAM_LOG_ACTIONS_BUF_SIZE 256
 #define SAM_LOG_CUSTOM_BUF_SIZE 256
 
+/* */
+#define DEFAULT_SLOTS_UPDATE_THRESHOLD 5
+
 /* Status values */
 enum sam_log_status {
     SAM_LOG_RX_SUCCESS = 0x00,
@@ -58,7 +61,7 @@ int sam_log_init(void);
  * @return 0 on success, negative error code on failure
  */
 int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t slot_idx,
-                   int16_t slot_idx_diff, uint8_t slots_to_use, bool set_default_slots,
+                   int16_t slot_idx_diff, uint8_t slots_to_use,
                    const void *custom_data, uint16_t custom_data_len);
 
 /**

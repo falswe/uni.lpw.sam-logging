@@ -52,7 +52,7 @@ LOG_MODULE_REGISTER(sam_log, CONFIG_LOG_DEFAULT_LEVEL);
 /* Constants for action processing */
 #define SAM_LOG_MAX_ACTION_HEADER_SIZE 11
 #define SAM_LOG_CUSTOM_STATUS_MASK 0x3FF /* 10-bit mask (0b1111111111) */
-#define SAM_LOG_DEFAULT_SLOTS_TO_USE 1
+#define SAM_LOG_STARTING_DEFAULT_SLOTS_TO_USE 1
 
 /* Structure representing a serialized action */
 struct sam_log_packed_action {
@@ -74,7 +74,9 @@ struct sam_log_ctx {
     struct ring_buf end_custom;
     bool logging_enabled;
     bool start_buffer_full;
-    uint8_t default_slots_to_use;
+    uint8_t current_default_slots_to_use;
+    uint8_t default_slots_update_counter;
+    uint8_t default_slots_to_use_candidate;
     uint32_t current_slot_idx;
     uint8_t last_deleted_default_slots_to_use;
     uint32_t last_deleted_slot_idx;
@@ -184,9 +186,11 @@ static size_t serialize_action(const struct sam_log_packed_action *action, uint8
 static void reset_log_context(void) {
     log_ctx.logging_enabled = true;
     log_ctx.start_buffer_full = false;
-    log_ctx.default_slots_to_use = SAM_LOG_DEFAULT_SLOTS_TO_USE;
+    log_ctx.current_default_slots_to_use = SAM_LOG_STARTING_DEFAULT_SLOTS_TO_USE;
+    log_ctx.default_slots_update_counter = 0;
+    log_ctx.default_slots_to_use_candidate = SAM_LOG_STARTING_DEFAULT_SLOTS_TO_USE;
     log_ctx.current_slot_idx = 0;
-    log_ctx.last_deleted_default_slots_to_use = SAM_LOG_DEFAULT_SLOTS_TO_USE;
+    log_ctx.last_deleted_default_slots_to_use = SAM_LOG_STARTING_DEFAULT_SLOTS_TO_USE;
     log_ctx.last_deleted_slot_idx = 0;
     memset(&log_ctx.stats, 0, sizeof(struct sam_log_stats));
 }
@@ -329,8 +333,8 @@ static void make_room_in_buffer(struct ring_buf *action_buf, struct ring_buf *cu
 
 /* Log an action with all possible fields */
 int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t slot_idx,
-                   int16_t slot_idx_diff, uint8_t slots_to_use, bool set_default_slots,
-                   const void *custom_data, uint16_t custom_data_len) {
+                   int16_t slot_idx_diff, uint8_t slots_to_use, const void *custom_data,
+                   uint16_t custom_data_len) {
     struct sam_log_packed_action action = {0};
     uint8_t hdr = 0;
     int ret;
@@ -347,10 +351,27 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
         action.custom_status = custom_status & SAM_LOG_CUSTOM_STATUS_MASK;
     }
 
+    bool set_default_slots = false;
+    /* Check if default slots to use has to be updated */
+    if (slots_to_use != log_ctx.current_default_slots_to_use) {
+        if (slots_to_use != log_ctx.default_slots_to_use_candidate) {
+            log_ctx.default_slots_to_use_candidate = slots_to_use;
+            log_ctx.default_slots_update_counter = 1;
+        } else {
+            log_ctx.default_slots_update_counter++;
+            if (log_ctx.default_slots_update_counter >= DEFAULT_SLOTS_UPDATE_THRESHOLD) {
+                LOG_INF("New default slots_to_use set: from %u to %u",
+                        log_ctx.current_default_slots_to_use, slots_to_use);
+                log_ctx.current_default_slots_to_use = slots_to_use;
+                set_default_slots = true;
+            }
+        }
+    }
+
     /* Check if we need extended header */
     if (slot_idx != log_ctx.current_slot_idx || slot_idx_diff != 0 ||
-        slots_to_use != log_ctx.default_slots_to_use || set_default_slots || custom_data_len > 0 ||
-        status == SAM_LOG_SYNCH_DONE) {
+        slots_to_use != log_ctx.current_default_slots_to_use || set_default_slots ||
+        custom_data_len > 0 || status == SAM_LOG_SYNCH_DONE) {
         action.m_hdr = 1;
 
         /* Add fields to header */
@@ -364,14 +385,14 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
             action.slot_idx_diff = slot_idx_diff;
         }
 
-        if (slots_to_use != log_ctx.default_slots_to_use || set_default_slots) {
+        if (slots_to_use != log_ctx.current_default_slots_to_use || set_default_slots) {
             hdr |= SAM_LOG_HDR_SLOTS_TO_USE;
             action.slots_to_use = slots_to_use;
         }
 
         if (set_default_slots) {
             hdr |= SAM_LOG_HDR_DEFAULT_SLOTS_TO_USE;
-            log_ctx.default_slots_to_use = slots_to_use;
+            log_ctx.current_default_slots_to_use = slots_to_use;
         }
 
         if (custom_data_len > 0) {
@@ -400,7 +421,7 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
              ring_buf_space_get(&log_ctx.start_custom) >= custom_data_len)) {
             /* Save state of the last action that fit in the start buffer */
             log_ctx.last_deleted_slot_idx = log_ctx.current_slot_idx;
-            log_ctx.last_deleted_default_slots_to_use = log_ctx.default_slots_to_use;
+            log_ctx.last_deleted_default_slots_to_use = log_ctx.current_default_slots_to_use;
 
             /* Add to start buffer */
             ret = add_to_buffer(&log_ctx.start_actions, &log_ctx.start_custom, serialized_action,
@@ -548,8 +569,7 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
                              uint8_t *out_buf, size_t out_size, bool put_first_slot_idx) {
     /* Output buffer position (start from 3rd elements since first and second are for starting
      * default slots to use and number of actions logged) */
-    uint8_t starting_default_slots_to_use = SAM_LOG_DEFAULT_SLOTS_TO_USE;
-    out_buf[0] = starting_default_slots_to_use;
+    out_buf[0] = SAM_LOG_STARTING_DEFAULT_SLOTS_TO_USE;
 
     struct bitbuf_state_t bitbuf_state = {
         .dest_buf = &out_buf[2], .offset = 0, .total_bits_written = 0};
