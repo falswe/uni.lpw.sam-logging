@@ -488,9 +488,9 @@ int sam_log_get_stats(struct sam_log_stats *stats) {
  * Tracks current write position within a byte (not byte-aligned).
  */
 struct bitbuf_state_t {
-    uint8_t *dest_buf;          // Pointer to current byte in destination buffer
-    uint8_t offset;             // Bit offset within current byte (0-7)
-    size_t total_bits_written;  // Total bits written to the buffer
+    uint8_t *dest_buf;         /* Pointer to current byte in destination buffer uint8_t */
+    uint8_t offset;            /* Bit offset within current byte (0-7) */
+    size_t total_bits_written; /* Total bits written to the buffer */
 };
 
 /**
@@ -498,30 +498,42 @@ struct bitbuf_state_t {
  * This allows packing data at the bit level rather than byte boundaries.
  *
  * @param value     The value to write (will be masked to 'bits' bits)
- * @param bits      Number of bits to write (1-8)
+ * @param bits      Number of bits to write (1-32)
  * @param dest_buf  Current buffer state
  * @return          Updated buffer state
  *
- * Example: Writing 4 bits starting at offset 3 in a byte
- *   Before: [xxxyy---][--------]
- *   After:  [xxxyyvvv][v-------]
+ * Example: Writing 24 bits starting at offset 3 in a byte
+ *   Before: [xxxyy---][--------][--------][--------]
+ *   After:  [xxyyvvvv][vvvvvvvv][vvvvvvvv][vvvv----]
  *   where x = old bits, y = old bits, v = new value bits
  */
-static inline struct bitbuf_state_t add_on_offset(uint8_t value, uint8_t bits,
+static inline struct bitbuf_state_t add_on_offset(uint32_t value, uint8_t bits,
                                                   struct bitbuf_state_t dest_buf) {
-    // Write high bits of value into remaining bits of current byte
-    // Shift value left to align MSB, then shift right by offset to position correctly
-    dest_buf.dest_buf[0] |= (value << (8 - bits)) >> dest_buf.offset;
+    /* Handle values larger than 8 bits by processing in chunks */
+    while (bits > 0) {
+        /* Calculate how many bits we can write in this iteration (max 8) */
+        uint8_t bits_to_write = (bits > 8) ? 8 : bits;
 
-    // If the value spans two bytes, write the low bits to the next byte
-    if (bits + dest_buf.offset >= 8) {
-        dest_buf.dest_buf[1] |= (value << (8 - bits)) << (8 - dest_buf.offset);
-        dest_buf.dest_buf += 1;  // Move to next byte
+        /* Extract the most significant bits_to_write bits from value */
+        uint8_t byte_value = (value >> (bits - bits_to_write)) & ((1 << bits_to_write) - 1);
+
+        /* Write high bits of value into remaining bits of current byte
+         Shift value left to align MSB, then shift right by offset to position correctly */
+        dest_buf.dest_buf[0] |= (byte_value << (8 - bits_to_write)) >> dest_buf.offset;
+
+        /* If the value spans two bytes, write the low bits to the next byte */
+        if (bits_to_write + dest_buf.offset >= 8) {
+            dest_buf.dest_buf[1] |= (byte_value << (8 - bits_to_write)) << (8 - dest_buf.offset);
+            dest_buf.dest_buf += 1; /* Move to next byte */
+        }
+
+        /* Update bit offset within current byte (wraps at 8) */
+        dest_buf.offset = (bits_to_write + dest_buf.offset) % 8;
+        dest_buf.total_bits_written += bits_to_write;
+
+        /* Move to next chunk of bits */
+        bits -= bits_to_write;
     }
-
-    // Update bit offset within current byte (wraps at 8)
-    dest_buf.offset = (bits + dest_buf.offset) % 8;
-    dest_buf.total_bits_written += bits;
 
     return dest_buf;
 }
@@ -532,24 +544,21 @@ static void add_action_packed(const struct sam_log_packed_action *action,
     *bitbuf_state = add_on_offset(action->status, SAM_LOG_BIT_SIZE_STATUS, *bitbuf_state);
 
     if (action->status == SAM_LOG_UNKNOWN) {
-        // Write high 2 bits first (bits 8-9 of the 10-bit value)
-        *bitbuf_state = add_on_offset((action->custom_status >> 8) & 0x03, 2, *bitbuf_state);
-        // Write low 8 bits (bits 0-7 of the 10-bit value)
-        *bitbuf_state = add_on_offset(action->custom_status & 0xFF, 8, *bitbuf_state);
+        *bitbuf_state =
+            add_on_offset(action->custom_status, SAM_LOG_BIT_SIZE_CUSTOM_STATUS, *bitbuf_state);
     }
 
     if (action->m_hdr) {
         *bitbuf_state = add_on_offset(action->hdr, SAM_LOG_BIT_SIZE_HDR, *bitbuf_state);
 
         if (action->hdr & SAM_LOG_HDR_SLOT_IDX) {
-            *bitbuf_state = add_on_offset((action->slot_idx >> 16) & 0xFF, 8, *bitbuf_state);
-            *bitbuf_state = add_on_offset((action->slot_idx >> 8) & 0xFF, 8, *bitbuf_state);
-            *bitbuf_state = add_on_offset(action->slot_idx & 0xFF, 8, *bitbuf_state);
+            *bitbuf_state =
+                add_on_offset(action->slot_idx, SAM_LOG_BIT_SIZE_SLOT_IDX, *bitbuf_state);
         }
 
         if (action->hdr & SAM_LOG_HDR_SLOT_IDX_DIFF) {
-            *bitbuf_state = add_on_offset((action->slot_idx_diff >> 8) & 0xFF, 8, *bitbuf_state);
-            *bitbuf_state = add_on_offset(action->slot_idx_diff & 0xFF, 8, *bitbuf_state);
+            *bitbuf_state =
+                add_on_offset(action->slot_idx_diff, SAM_LOG_BIT_SIZE_SLOT_IDX_DIFF, *bitbuf_state);
         }
 
         if (action->hdr & SAM_LOG_HDR_SLOTS_TO_USE) {
@@ -558,8 +567,8 @@ static void add_action_packed(const struct sam_log_packed_action *action,
         }
 
         if (action->hdr & SAM_LOG_HDR_CUSTOM_FIELDS) {
-            *bitbuf_state = add_on_offset((action->total_custom_len >> 8) & 0xFF, 8, *bitbuf_state);
-            *bitbuf_state = add_on_offset(action->total_custom_len & 0xFF, 8, *bitbuf_state);
+            *bitbuf_state = add_on_offset(action->total_custom_len,
+                                          SAM_LOG_BIT_SIZE_TOTAL_CUSTOM_LEN, *bitbuf_state);
         }
     }
 }
@@ -759,13 +768,13 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
     /* Put number of actions logged at the start of the output buffer */
     out_buf[1] = actions_logged;
 
-    // Calculate actual bytes written based on bits written
+    /* Calculate actual bytes written based on bits written */
     size_t bits_written = bitbuf_state.total_bits_written;
-    size_t bytes_written_for_actions = (bits_written + 7) / 8;  // Round up to nearest byte
+    size_t bytes_written_for_actions = (bits_written + 7) / 8; /* Round up to nearest byte */
 
     LOG_INF("out_buf[0] (default_slots) = %u, out_buf[1] (num_actions) = %u", out_buf[0],
             out_buf[1]);
-    return 2 + bytes_written_for_actions;  // 2 header bytes + action data
+    return 2 + bytes_written_for_actions; /* 2 header bytes + action data bytes */
 }
 
 /* Flush logs and encode them */
