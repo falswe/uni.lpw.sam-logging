@@ -50,8 +50,8 @@ LOG_MODULE_REGISTER(sam_log, CONFIG_LOG_DEFAULT_LEVEL);
 #define SAM_LOG_SHIFT_STATUS 2
 
 /* Constants for action processing */
-#define SAM_LOG_MAX_ACTION_HEADER_SIZE 11
-#define SAM_LOG_CUSTOM_STATUS_MASK 0x3FF /* 10-bit mask (0b1111111111) */
+#define SAM_LOG_MAX_ACTION_HEADER_SIZE 11 /* Maximum action size*/
+#define SAM_LOG_CUSTOM_STATUS_MASK 0x3FF  /* 10-bit mask (0b1111111111) */
 #define SAM_LOG_STARTING_DEFAULT_SLOTS_TO_USE 1
 
 /* Structure representing a serialized action */
@@ -621,22 +621,30 @@ static int extract_actions(struct ring_buf *action_buf,
     uint8_t first_action_slots_to_use = 0;
 
     for (int i = 0; i < DEFAULT_SLOTS_UPDATE_THRESHOLD; i++) {
-        size_t single_action_byte_size = 1;
-
-        if (ring_buf_size_get(action_buf) == 0) {
+        size_t available_data = ring_buf_size_get(action_buf);
+        if (available_data == 0) {
             /* No more data */
-            LOG_INF("Last action extracted with custom data size %zu and slot idx %u",
-                    extracted_action_buf[i - 1].total_custom_len,
-                    extracted_action_buf[i - 1].slot_idx);
             break;
         }
 
-        /* Parse first byte to get action type */
-        uint8_t *first_byte;
-        ring_buf_get_claim(action_buf, &first_byte, 1);
+        uint8_t temp_buf[SAM_LOG_MAX_ACTION_HEADER_SIZE];
+        uint32_t data_to_read = SAM_LOG_MAX_ACTION_HEADER_SIZE;
+        if (available_data < SAM_LOG_MAX_ACTION_HEADER_SIZE) {
+            data_to_read = available_data;
+        }
+        uint32_t read_data = ring_buf_peek(action_buf, temp_buf, data_to_read);
 
-        uint8_t m_hdr = (*first_byte & SAM_LOG_MASK_M_HDR) >> SAM_LOG_SHIFT_M_HDR;
-        uint8_t status = (*first_byte & SAM_LOG_MASK_STATUS) >> SAM_LOG_SHIFT_STATUS;
+        if (read_data < 1) {
+            break;
+        }
+
+        size_t pos = 0;
+
+        /* Parse first byte to get action type */
+        uint8_t first_byte = temp_buf[pos++];
+
+        uint8_t m_hdr = (first_byte & SAM_LOG_MASK_M_HDR) >> SAM_LOG_SHIFT_M_HDR;
+        uint8_t status = (first_byte & SAM_LOG_MASK_STATUS) >> SAM_LOG_SHIFT_STATUS;
 
         extracted_action_buf[i].m_hdr = m_hdr;
         if (put_first_slot_idx) {
@@ -646,68 +654,56 @@ static int extract_actions(struct ring_buf *action_buf,
         extracted_action_sizes[i] += SAM_LOG_BIT_SIZE_M_HDR + SAM_LOG_BIT_SIZE_STATUS;
 
         if (status == SAM_LOG_UNKNOWN) {
-            uint8_t *custom_status;
             /* High bits already contained in previous byte */
-            ring_buf_get_claim(action_buf, &custom_status, SAM_LOG_BYTE_SIZE_CUSTOM_STATUS - 1);
-            extracted_action_buf[i].custom_status = ((*first_byte & 0x3) << 8) | *custom_status;
+            uint8_t custom_status_low_bits = temp_buf[pos++];
+            extracted_action_buf[i].custom_status =
+                ((first_byte & 0x3) << 8) | custom_status_low_bits;
             extracted_action_sizes[i] += SAM_LOG_BIT_SIZE_CUSTOM_STATUS;
-            single_action_byte_size += SAM_LOG_BYTE_SIZE_CUSTOM_STATUS - 1;
         }
 
+        /* Parse extended header fields if m_hdr is set */
         if (m_hdr) {
-            uint8_t *hdr;
-            ring_buf_get_claim(action_buf, &hdr, SAM_LOG_BYTE_SIZE_HDR);
-            extracted_action_buf[i].hdr = *hdr;
+            uint8_t hdr = temp_buf[pos++];
+            extracted_action_buf[i].hdr = hdr;
             extracted_action_sizes[i] += SAM_LOG_BIT_SIZE_HDR;
-            single_action_byte_size += SAM_LOG_BYTE_SIZE_HDR;
 
-            if (*hdr & SAM_LOG_HDR_SLOT_IDX) {
-                uint8_t *slot_idx;
-                ring_buf_get_claim(action_buf, &slot_idx, SAM_LOG_BYTE_SIZE_SLOT_IDX);
+            if (hdr & SAM_LOG_HDR_SLOT_IDX) {
                 extracted_action_buf[i].slot_idx =
-                    (slot_idx[0] << 16) | (slot_idx[1] << 8) | slot_idx[2];
+                    (temp_buf[pos] << 16) | (temp_buf[pos + 1] << 8) | temp_buf[pos + 2];
+                pos += SAM_LOG_BYTE_SIZE_SLOT_IDX;
                 extracted_action_sizes[i] += SAM_LOG_BIT_SIZE_SLOT_IDX;
-                single_action_byte_size += SAM_LOG_BYTE_SIZE_SLOT_IDX;
             }
 
-            if (*hdr & SAM_LOG_HDR_SLOT_IDX_DIFF) {
-                uint8_t *slot_idx_diff;
-                ring_buf_get_claim(action_buf, &slot_idx_diff, SAM_LOG_BYTE_SIZE_SLOT_IDX_DIFF);
-                extracted_action_buf[i].slot_idx_diff = (slot_idx_diff[0] << 8) | slot_idx_diff[1];
+            if (hdr & SAM_LOG_HDR_SLOT_IDX_DIFF) {
+                extracted_action_buf[i].slot_idx_diff = (temp_buf[pos] << 8) | temp_buf[pos + 1];
+                pos += SAM_LOG_BYTE_SIZE_SLOT_IDX_DIFF;
                 extracted_action_sizes[i] += SAM_LOG_BIT_SIZE_SLOT_IDX_DIFF;
-                single_action_byte_size += SAM_LOG_BYTE_SIZE_SLOT_IDX_DIFF;
             }
 
-            if (*hdr & SAM_LOG_HDR_SLOTS_TO_USE) {
-                uint8_t *slots_to_use;
-                ring_buf_get_claim(action_buf, &slots_to_use, SAM_LOG_BYTE_SIZE_SLOTS_TO_USE);
-                extracted_action_buf[i].slots_to_use = *slots_to_use;
+            if (hdr & SAM_LOG_HDR_SLOTS_TO_USE) {
+                extracted_action_buf[i].slots_to_use = temp_buf[pos];
+                pos += SAM_LOG_BYTE_SIZE_SLOTS_TO_USE;
                 extracted_action_sizes[i] += SAM_LOG_BIT_SIZE_SLOTS_TO_USE;
-                single_action_byte_size += SAM_LOG_BYTE_SIZE_SLOTS_TO_USE;
 
+                /* Track first action's slots_to_use and verify consistency */
                 if (i == 0) {
-                    first_action_slots_to_use = *slots_to_use;
+                    first_action_slots_to_use = extracted_action_buf[i].slots_to_use;
                 } else {
-                    if (*slots_to_use != first_action_slots_to_use) {
+                    if (extracted_action_buf[i].slots_to_use != first_action_slots_to_use) {
                         /* Different slots_to_use in subsequent actions */
-                        ring_buf_get_finish(action_buf, 0);
                         return extracted_actions;
                     }
                 }
             }
 
-            if (*hdr & SAM_LOG_HDR_CUSTOM_FIELDS) {
-                uint8_t *custom_len;
-                ring_buf_get_claim(action_buf, &custom_len, SAM_LOG_BYTE_SIZE_TOTAL_CUSTOM_LEN);
-                extracted_action_buf[i].total_custom_len = (custom_len[0] << 8) | custom_len[1];
+            if (hdr & SAM_LOG_HDR_CUSTOM_FIELDS) {
+                extracted_action_buf[i].total_custom_len = (temp_buf[pos] << 8) | temp_buf[pos + 1];
+                pos += SAM_LOG_BYTE_SIZE_TOTAL_CUSTOM_LEN;
                 extracted_action_sizes[i] += SAM_LOG_BIT_SIZE_TOTAL_CUSTOM_LEN;
-                single_action_byte_size += SAM_LOG_BYTE_SIZE_TOTAL_CUSTOM_LEN;
-                if (extracted_action_buf[i].total_custom_len == 156) {
-                    LOG_INF("WEIRD ACTION EXTRACTED, %u", extracted_action_buf[i].slot_idx);
-                }
             }
 
         } else {
+            /* No extended header - use current default slots_to_use */
             if (i == 0) {
                 first_action_slots_to_use = *current_extracted_default_slots_to_use;
             }
@@ -716,6 +712,8 @@ static int extract_actions(struct ring_buf *action_buf,
         /* Add slot index if it was not in the first action */
         if (put_first_slot_idx) {
             if (!(extracted_action_buf[i].hdr & SAM_LOG_HDR_SLOT_IDX)) {
+                /* Add slot_idx to first action for proper sequencing */
+                extracted_action_buf[i].m_hdr = 1;
                 extracted_action_buf[i].hdr |= SAM_LOG_HDR_SLOT_IDX;
                 extracted_action_buf[i].slot_idx =
                     log_ctx.last_deleted_slot_idx + log_ctx.last_deleted_default_slots_to_use;
@@ -723,11 +721,12 @@ static int extract_actions(struct ring_buf *action_buf,
             }
         }
 
-        ring_buf_get_finish(action_buf, single_action_byte_size);
+        ring_buf_get(action_buf, NULL, pos);
         put_first_slot_idx = false;
         extracted_actions++;
     }
 
+    /* Check if we need to edit actions for default slots_to_use update */
     if (extracted_actions == DEFAULT_SLOTS_UPDATE_THRESHOLD &&
         extracted_action_buf[DEFAULT_SLOTS_UPDATE_THRESHOLD - 1].m_hdr &&
         (extracted_action_buf[DEFAULT_SLOTS_UPDATE_THRESHOLD - 1].hdr &
@@ -788,7 +787,8 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
                 /* No space for custom data but maybe enough space for other actions, skip custom
                  * data for this action */
                 LOG_INF(
-                    "Skipping custom data for action %u, custom data length of %u exceeds output "
+                    "Skipping extraction of custom data for action %u, custom data length of %u "
+                    "exceeds output "
                     "buffer "
                     "size",
                     extracted_action_buf[i].slot_idx, total_custom_len);
@@ -799,14 +799,12 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
             add_action_packed(&extracted_action_buf[i], &bitbuf_state);
             actions_logged++;
 
-            uint8_t *custom_data;
-            ring_buf_get_claim(custom_buf, &custom_data, total_custom_len);
+            uint8_t custom_data[total_custom_len];
+            ring_buf_get(custom_buf, custom_data, total_custom_len);
 
             for (uint32_t j = 0; j < total_custom_len; j++) {
                 bitbuf_state = add_on_offset(custom_data[j], 8, bitbuf_state);
             }
-
-            ring_buf_get_finish(custom_buf, total_custom_len);
         }
         processing_end_buffer = false;
     }
