@@ -9,9 +9,6 @@
 #define SAM_LOG_ACTIONS_BUF_SIZE 256
 #define SAM_LOG_CUSTOM_BUF_SIZE 256
 
-/* */
-#define DEFAULT_SLOTS_UPDATE_THRESHOLD 5
-
 /* Status values */
 enum sam_log_status {
     SAM_LOG_RX_SUCCESS = 0x00,
@@ -43,9 +40,10 @@ struct sam_log_stats {
 /**
  * Initialize the logging subsystem
  *
+ * @param default_slots_update_treshold Number of subsequent actions with the same slots_to_use needed to change the default
  * @return 0 on success, negative error code on failure
  */
-int sam_log_init(void);
+int sam_log_init(uint16_t default_slots_update_treshold);
 
 /**
  * Log an action with all possible fields
