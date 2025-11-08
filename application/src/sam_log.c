@@ -1,4 +1,4 @@
-#include "../include/sam_log.h"
+#include "sam_log.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -50,8 +50,9 @@ LOG_MODULE_REGISTER(sam_log, CONFIG_LOG_DEFAULT_LEVEL);
 #define SAM_LOG_SHIFT_STATUS 2
 
 /* Constants for action processing */
-#define SAM_LOG_MAX_ACTION_HEADER_SIZE 11 /* Maximum action size*/
-#define SAM_LOG_CUSTOM_STATUS_MASK 0x3FF  /* 10-bit mask (0b1111111111) */
+#define SAM_LOG_MIN_ACTION_SIZE 6
+#define SAM_LOG_MAX_ACTION_SIZE 11
+#define SAM_LOG_CUSTOM_STATUS_MASK 0x3FF /* 10-bit mask (0b1111111111) */
 #define SAM_LOG_STARTING_DEFAULT_SLOTS_TO_USE 1
 
 /* Structure representing a serialized action */
@@ -83,7 +84,7 @@ struct sam_log_ctx {
     struct sam_log_stats stats;
 
     /* Number of subsequent actions with the same slots_to_use needed to change the default */
-    uint16_t default_slots_update_treshold;
+    uint16_t default_slots_update_threshold;
 };
 
 /* Structure containing all the variables needed in the file*/
@@ -216,7 +217,11 @@ static void reset_log_context(void) {
 }
 
 /* Initialize the logging subsystem */
-int sam_log_init(uint16_t default_slots_update_treshold) {
+int sam_log_init(uint16_t default_slots_update_threshold) {
+    if (default_slots_update_threshold == 0) {
+        return -EINVAL;
+    }
+
     /* Initialize ring buffers */
     ring_buf_init(&log_instance.log_ctx.start_actions, sizeof(log_instance.start_actions_buf),
                   log_instance.start_actions_buf);
@@ -227,7 +232,7 @@ int sam_log_init(uint16_t default_slots_update_treshold) {
     ring_buf_init(&log_instance.log_ctx.end_custom, sizeof(log_instance.end_custom_buf),
                   log_instance.end_custom_buf);
 
-    log_instance.log_ctx.default_slots_update_treshold = default_slots_update_treshold;
+    log_instance.log_ctx.default_slots_update_threshold = default_slots_update_threshold;
 
     /* Initialize context */
     reset_log_context();
@@ -363,9 +368,6 @@ static void make_room_in_buffer(struct ring_buf *action_buf, struct ring_buf *cu
 int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t slot_idx,
                    int16_t slot_idx_diff, uint8_t slots_to_use, const void *custom_data,
                    uint16_t custom_data_len) {
-    if (custom_data_len == 156) {
-        LOG_INF("Logging action with weird custom data length 156 at slot idx %u", slot_idx);
-    }
     struct sam_log_packed_action action = {0};
     uint8_t hdr = 0;
     int ret;
@@ -391,7 +393,7 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
         } else {
             log_instance.log_ctx.default_slots_update_counter++;
             if (log_instance.log_ctx.default_slots_update_counter >=
-                log_instance.log_ctx.default_slots_update_treshold) {
+                log_instance.log_ctx.default_slots_update_threshold) {
                 LOG_INF("New default slots_to_use set: from %u to %u",
                         log_instance.log_ctx.current_default_slots_to_use, slots_to_use);
                 log_instance.log_ctx.current_default_slots_to_use = slots_to_use;
@@ -437,7 +439,7 @@ int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t 
     }
 
     /* Calculate required space */
-    uint8_t serialized_action[SAM_LOG_MAX_ACTION_HEADER_SIZE];
+    uint8_t serialized_action[SAM_LOG_MAX_ACTION_SIZE];
     size_t action_size = serialize_action(&action, serialized_action, sizeof(serialized_action));
 
     if (action_size == 0) {
@@ -607,13 +609,6 @@ static void add_action_packed(const struct sam_log_packed_action *action,
                                           SAM_LOG_BIT_SIZE_TOTAL_CUSTOM_LEN, *bitbuf_state);
         }
     }
-
-    if (action->slot_idx == 5000) {
-        LOG_INF("VERY LAST ACTION");
-    }
-    if (action->total_custom_len == 156) {
-        LOG_INF("WEIRD ACTION COPIED, %u", action->slot_idx);
-    }
 }
 
 static void edit_actions_with_new_default(struct sam_log_packed_action *extracted_action_buf) {
@@ -623,7 +618,7 @@ static void edit_actions_with_new_default(struct sam_log_packed_action *extracte
     extracted_action_buf[0].hdr |= SAM_LOG_HDR_SLOTS_TO_USE;
 
     /* Remove SLOTS_TO_USE from following actions */
-    for (int i = 1; i < log_instance.log_ctx.default_slots_update_treshold; i++) {
+    for (int i = 1; i < log_instance.log_ctx.default_slots_update_threshold; i++) {
         extracted_action_buf[i].hdr &= ~SAM_LOG_HDR_SLOTS_TO_USE;
         if (extracted_action_buf[i].hdr == 0) {
             extracted_action_buf[i].m_hdr = 0;
@@ -631,7 +626,7 @@ static void edit_actions_with_new_default(struct sam_log_packed_action *extracte
     }
 
     /* Unset SET_DEFAULT_SLOTS from last action */
-    extracted_action_buf[log_instance.log_ctx.default_slots_update_treshold - 1].hdr &=
+    extracted_action_buf[log_instance.log_ctx.default_slots_update_threshold - 1].hdr &=
         ~SAM_LOG_HDR_DEFAULT_SLOTS_TO_USE;
 }
 
@@ -642,16 +637,16 @@ static int extract_actions(struct ring_buf *action_buf,
     int extracted_actions = 0;
     uint8_t first_action_slots_to_use = 0;
 
-    for (int i = 0; i < log_instance.log_ctx.default_slots_update_treshold; i++) {
+    for (int i = 0; i < log_instance.log_ctx.default_slots_update_threshold; i++) {
         size_t available_data = ring_buf_size_get(action_buf);
         if (available_data == 0) {
             /* No more data */
             break;
         }
 
-        uint8_t temp_buf[SAM_LOG_MAX_ACTION_HEADER_SIZE];
-        uint32_t data_to_read = SAM_LOG_MAX_ACTION_HEADER_SIZE;
-        if (available_data < SAM_LOG_MAX_ACTION_HEADER_SIZE) {
+        uint8_t temp_buf[SAM_LOG_MAX_ACTION_SIZE];
+        uint32_t data_to_read = SAM_LOG_MAX_ACTION_SIZE;
+        if (available_data < SAM_LOG_MAX_ACTION_SIZE) {
             data_to_read = available_data;
         }
         uint32_t read_data = ring_buf_peek(action_buf, temp_buf, data_to_read);
@@ -750,9 +745,9 @@ static int extract_actions(struct ring_buf *action_buf,
     }
 
     /* Check if we need to edit actions for default slots_to_use update */
-    if (extracted_actions == log_instance.log_ctx.default_slots_update_treshold &&
-        extracted_action_buf[log_instance.log_ctx.default_slots_update_treshold - 1].m_hdr &&
-        (extracted_action_buf[log_instance.log_ctx.default_slots_update_treshold - 1].hdr &
+    if (extracted_actions == log_instance.log_ctx.default_slots_update_threshold &&
+        extracted_action_buf[log_instance.log_ctx.default_slots_update_threshold - 1].m_hdr &&
+        (extracted_action_buf[log_instance.log_ctx.default_slots_update_threshold - 1].hdr &
          SAM_LOG_HDR_DEFAULT_SLOTS_TO_USE)) {
         edit_actions_with_new_default(extracted_action_buf);
         *current_extracted_default_slots_to_use = first_action_slots_to_use;
@@ -780,11 +775,11 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
     bool end_processing = false;
 
     struct sam_log_packed_action
-        extracted_action_buf[log_instance.log_ctx.default_slots_update_treshold];
-    size_t extracted_action_sizes[log_instance.log_ctx.default_slots_update_treshold];
+        extracted_action_buf[log_instance.log_ctx.default_slots_update_threshold];
+    size_t extracted_action_sizes[log_instance.log_ctx.default_slots_update_threshold];
 
     /* Process actions until buffer is empty or output is full */
-    while (bitbuf_state.total_bits_written < out_size * 8 - 6) {
+    while (bitbuf_state.total_bits_written < out_size * 8 - SAM_LOG_MIN_ACTION_SIZE) {
         if (ring_buf_size_get(action_buf) == 0) {
             /* No more data */
             break;
@@ -818,9 +813,7 @@ static size_t process_buffer(struct ring_buf *action_buf, struct ring_buf *custo
                  * data for this action */
                 LOG_INF(
                     "Skipping extraction of custom data for action %u, custom data length of %u "
-                    "exceeds output "
-                    "buffer "
-                    "size",
+                    "exceeds output buffer size",
                     extracted_action_buf[i].slot_idx, total_custom_len);
                 extracted_action_buf[i].hdr &= ~SAM_LOG_HDR_CUSTOM_FIELDS;
                 total_custom_len = 0;

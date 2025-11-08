@@ -40,10 +40,10 @@ struct sam_log_stats {
 /**
  * Initialize the logging subsystem
  *
- * @param default_slots_update_treshold Number of subsequent actions with the same slots_to_use needed to change the default
+ * @param default_slots_update_threshold Number of subsequent actions with the same slots_to_use needed to change the default
  * @return 0 on success, negative error code on failure
  */
-int sam_log_init(uint16_t default_slots_update_treshold);
+int sam_log_init(uint16_t default_slots_update_threshold);
 
 /**
  * Log an action with all possible fields
@@ -53,7 +53,6 @@ int sam_log_init(uint16_t default_slots_update_treshold);
  * @param slot_idx Slot index where the action occurred
  * @param slot_idx_diff Difference between expected and actual slot index
  * @param slots_to_use Number of slots used by this action
- * @param set_default_slots Whether to set this as the default slots to use
  * @param custom_data Pointer to custom data to include with the action
  * @param custom_data_len Length of the custom data in bytes
  * @return 0 on success, negative error code on failure

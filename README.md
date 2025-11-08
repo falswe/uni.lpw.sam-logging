@@ -10,6 +10,7 @@ sam-logging/
 │   ├── src/
 │   │   ├── main.c       # Sample application showing logging usage
 │   │   ├── sam_log.c    # Logging implementation
+│   ├── include/
 │   │   └── sam_log.h    # Logging API definitions
 │   └── analyze/
 │       └── sam-log-viewer.html  # Web-based log visualization tool
@@ -55,13 +56,12 @@ The logging API is defined in `sam_log.h`. Here's a quick overview of the main f
 
 ```c
 // Initialize the logging subsystem
-int sam_log_init(void);
+int sam_log_init(uint16_t default_slots_update_threshold);
 
 // Log an action with all possible fields
-int sam_log_action(enum sam_log_status status, uint16_t custom_status, 
-                  uint32_t slot_idx, int16_t slot_idx_diff, 
-                  uint8_t slots_to_use, bool set_default_slots,
-                  const void *custom_data, uint16_t custom_data_len);
+int sam_log_action(enum sam_log_status status, uint16_t custom_status, uint32_t slot_idx,
+                   int16_t slot_idx_diff, uint8_t slots_to_use,
+                   const void *custom_data, uint16_t custom_data_len);
 
 // Get logging statistics
 int sam_log_get_stats(struct sam_log_stats *stats);

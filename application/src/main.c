@@ -3,8 +3,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
-#include "../include/sam_log.h"
 #include "deca_device_api.h"
+#include "sam_log.h"
 
 LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -148,9 +148,9 @@ static void showcase_dynamic_default_slots(void) {
 
 /*
  * Demonstrate real-world epoch behavior from epoch 1017 trace.
- * 
+ *
  * Each physical node simulates exactly one logical node from the deployment.
- * 
+ *
  * Physical Node → Logical Node mapping:
  *   Node 54 (part_id 283165229) → Logical Node  10
  *   Node 76 (part_id 283170447) → Logical Node   4
@@ -238,9 +238,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_TX_DONE, 0, base_slot + 2508, 0, 33, NULL, 0);
 
         LOG_INF("Node 50: Completed 38 actions");
-    }
- else 
-    if (node_id == 3504425116) {
+    } else if (node_id == 3504425116) {
         /* Physical Node 51 → Simulates Logical Node 6 */
         /* Actions: 2x RX_ERROR, 21x RX_TIMEOUT, 3x SYNCH_DONE, 12x TX_DONE */
         LOG_INF("Node 51 (logical 6): Replaying 38 actions");
@@ -289,9 +287,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_TX_DONE, 0, base_slot + 2508, 0, 33, NULL, 0);
 
         LOG_INF("Node 51: Completed 38 actions");
-    }
- else 
-    if (node_id == 1356940854) {
+    } else if (node_id == 1356940854) {
         /* Physical Node 52 → Simulates Logical Node 7 */
         /* Actions: 1x RX_ERROR, 22x RX_TIMEOUT, 3x SYNCH_DONE, 12x TX_DONE */
         LOG_INF("Node 52 (logical 7): Replaying 38 actions");
@@ -346,9 +342,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_RX_TIMEOUT, 0, base_slot + 3003, 0, 33, NULL, 0);
 
         LOG_INF("Node 52: Completed 38 actions");
-    }
- else 
-    if (node_id == 2430687019) {
+    } else if (node_id == 2430687019) {
         /* Physical Node 53 → Simulates Logical Node 9 */
         /* Actions: 23x RX_TIMEOUT, 3x SYNCH_DONE, 12x TX_DONE */
         LOG_INF("Node 53 (logical 9): Replaying 38 actions");
@@ -397,9 +391,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_TX_DONE, 0, base_slot + 2508, 0, 33, NULL, 0);
 
         LOG_INF("Node 53: Completed 38 actions");
-    }
- else 
-    if (node_id == 283165229) {
+    } else if (node_id == 283165229) {
         /* Physical Node 54 → Simulates Logical Node 10 */
         /* Actions: 23x RX_TIMEOUT, 3x SYNCH_DONE, 12x TX_DONE */
         LOG_INF("Node 54 (logical 10): Replaying 38 actions");
@@ -448,9 +440,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_TX_DONE, 0, base_slot + 2508, 0, 33, NULL, 0);
 
         LOG_INF("Node 54: Completed 38 actions");
-    }
- else 
-    if (node_id == 3504440328) {
+    } else if (node_id == 3504440328) {
         /* Physical Node 55 → Simulates Logical Node 11 */
         /* Actions: 2x RX_SUCCESS, 23x RX_TIMEOUT, 3x SYNCH_DONE, 10x TX_DONE */
         LOG_INF("Node 55 (logical 11): Replaying 38 actions");
@@ -499,9 +489,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_TX_DONE, 0, base_slot + 2343, 0, 33, NULL, 0);
 
         LOG_INF("Node 55: Completed 38 actions");
-    }
- else 
-    if (node_id == 3504395021) {
+    } else if (node_id == 3504395021) {
         /* Physical Node 56 → Simulates Logical Node 12 */
         /* Actions: 23x RX_TIMEOUT, 3x SYNCH_DONE, 12x TX_DONE */
         LOG_INF("Node 56 (logical 12): Replaying 38 actions");
@@ -550,9 +538,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_TX_DONE, 0, base_slot + 2508, 0, 33, NULL, 0);
 
         LOG_INF("Node 56: Completed 38 actions");
-    }
- else 
-    if (node_id == 3504507569) {
+    } else if (node_id == 3504507569) {
         /* Physical Node 57 → Simulates Logical Node 14 */
         /* Actions: 1x RX_ERROR, 23x RX_TIMEOUT, 3x SYNCH_DONE, 11x TX_DONE */
         LOG_INF("Node 57 (logical 14): Replaying 38 actions");
@@ -601,9 +587,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_TX_DONE, 0, base_slot + 2475, 0, 33, NULL, 0);
 
         LOG_INF("Node 57: Completed 38 actions");
-    }
- else 
-    if (node_id == 283279897) {
+    } else if (node_id == 283279897) {
         /* Physical Node 58 → Simulates Logical Node 15 */
         /* Actions: 2x RX_ERROR, 24x RX_TIMEOUT, 3x SYNCH_DONE, 9x TX_DONE */
         LOG_INF("Node 58 (logical 15): Replaying 38 actions");
@@ -652,9 +636,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_TX_DONE, 0, base_slot + 2376, 0, 33, NULL, 0);
 
         LOG_INF("Node 58: Completed 38 actions");
-    }
- else 
-    if (node_id == 2430685849) {
+    } else if (node_id == 2430685849) {
         /* Physical Node 61 → Simulates Logical Node 16 */
         /* Actions: 1x RX_ERROR, 25x RX_TIMEOUT, 3x SYNCH_DONE, 9x TX_DONE */
         LOG_INF("Node 61 (logical 16): Replaying 38 actions");
@@ -703,9 +685,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_TX_DONE, 0, base_slot + 2343, 0, 33, NULL, 0);
 
         LOG_INF("Node 61: Completed 38 actions");
-    }
- else 
-    if (node_id == 3504505384) {
+    } else if (node_id == 3504505384) {
         /* Physical Node 62 → Simulates Logical Node 17 */
         /* Actions: 1x RX_ERROR, 26x RX_TIMEOUT, 3x SYNCH_DONE, 8x TX_DONE */
         LOG_INF("Node 62 (logical 17): Replaying 38 actions");
@@ -754,9 +734,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_SYNCH_DONE, 0, base_slot + 2310, 0, 33, NULL, 0);
 
         LOG_INF("Node 62: Completed 38 actions");
-    }
- else 
-    if (node_id == 2430648359) {
+    } else if (node_id == 2430648359) {
         /* Physical Node 63 → Simulates Logical Node 18 */
         /* Actions: 2x RX_ERROR, 26x RX_TIMEOUT, 2x SYNCH_DONE, 8x TX_DONE */
         LOG_INF("Node 63 (logical 18): Replaying 38 actions");
@@ -805,9 +783,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_RX_TIMEOUT, 0, base_slot + 2211, 0, 33, NULL, 0);
 
         LOG_INF("Node 63: Completed 38 actions");
-    }
- else 
-    if (node_id == 1356895520) {
+    } else if (node_id == 1356895520) {
         /* Physical Node 64 → Simulates Logical Node 19 */
         /* Actions: 28x RX_TIMEOUT, 2x SYNCH_DONE, 8x TX_DONE */
         LOG_INF("Node 64 (logical 19): Replaying 38 actions");
@@ -856,9 +832,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_RX_TIMEOUT, 0, base_slot + 2244, 0, 33, NULL, 0);
 
         LOG_INF("Node 64: Completed 38 actions");
-    }
- else 
-    if (node_id == 3504392353) {
+    } else if (node_id == 3504392353) {
         /* Physical Node 65 → Simulates Logical Node 26 */
         /* Actions: 2x RX_ERROR, 3x RX_SUCCESS, 18x RX_TIMEOUT, 3x SYNCH_DONE, 12x TX_DONE */
         LOG_INF("Node 65 (logical 26): Replaying 38 actions");
@@ -911,9 +885,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_TX_DONE, 0, base_slot + 2541, 0, 33, NULL, 0);
 
         LOG_INF("Node 65: Completed 38 actions");
-    }
- else 
-    if (node_id == 283202460) {
+    } else if (node_id == 283202460) {
         /* Physical Node 70 → Simulates Logical Node 27 */
         /* Actions: 23x RX_TIMEOUT, 3x SYNCH_DONE, 12x TX_DONE */
         LOG_INF("Node 70 (logical 27): Replaying 38 actions");
@@ -968,9 +940,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_RX_TIMEOUT, 0, base_slot + 3036, 0, 33, NULL, 0);
 
         LOG_INF("Node 70: Completed 38 actions");
-    }
- else 
-    if (node_id == 1356896676) {
+    } else if (node_id == 1356896676) {
         /* Physical Node 71 → Simulates Logical Node 36 */
         /* Actions: 23x RX_TIMEOUT, 3x SYNCH_DONE, 12x TX_DONE */
         LOG_INF("Node 71 (logical 36): Replaying 38 actions");
@@ -1025,9 +995,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_RX_TIMEOUT, 0, base_slot + 3036, 0, 33, NULL, 0);
 
         LOG_INF("Node 71: Completed 38 actions");
-    }
- else 
-    if (node_id == 283281171) {
+    } else if (node_id == 283281171) {
         /* Physical Node 72 → Simulates Logical Node 109 */
         /* Actions: 3x RX_ERROR, 14x RX_TIMEOUT, 4x SYNCH_DONE, 16x TX_DONE */
         LOG_INF("Node 72 (logical 109): Replaying 37 actions");
@@ -1085,9 +1053,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_TX_DONE, 0, base_slot + 3498, 0, 33, NULL, 0);
 
         LOG_INF("Node 72: Completed 37 actions");
-    }
- else 
-    if (node_id == 3504409141) {
+    } else if (node_id == 3504409141) {
         /* Physical Node 73 → Simulates Logical Node 118 */
         /* Actions: 5x RX_SUCCESS, 3x RX_TIMEOUT, 6x SYNCH_DONE, 22x TX_DONE */
         LOG_INF("Node 73 (logical 118): Replaying 36 actions");
@@ -1152,9 +1118,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_RX_TIMEOUT, 0, base_slot + 5478, 0, 33, NULL, 0);
 
         LOG_INF("Node 73: Completed 36 actions");
-    }
- else 
-    if (node_id == 283296289) {
+    } else if (node_id == 283296289) {
         /* Physical Node 74 → Simulates Logical Node 2 */
         /* Actions: 23x RX_TIMEOUT, 3x SYNCH_DONE, 12x TX_DONE */
         LOG_INF("Node 74 (logical 2): Replaying 38 actions");
@@ -1209,9 +1173,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_RX_TIMEOUT, 0, base_slot + 3036, 0, 33, NULL, 0);
 
         LOG_INF("Node 74: Completed 38 actions");
-    }
- else 
-    if (node_id == 3504396712) {
+    } else if (node_id == 3504396712) {
         /* Physical Node 75 → Simulates Logical Node 3 */
         /* Actions: 23x RX_TIMEOUT, 3x SYNCH_DONE, 12x TX_DONE */
         LOG_INF("Node 75 (logical 3): Replaying 38 actions");
@@ -1264,9 +1226,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_RX_TIMEOUT, 0, base_slot + 2970, 0, 33, NULL, 0);
 
         LOG_INF("Node 75: Completed 38 actions");
-    }
- else 
-    if (node_id == 283170447) {
+    } else if (node_id == 283170447) {
         /* Physical Node 76 → Simulates Logical Node 4 */
         /* Actions: 2x RX_ERROR, 3x RX_SUCCESS, 20x RX_TIMEOUT, 3x SYNCH_DONE, 10x TX_DONE */
         LOG_INF("Node 76 (logical 4): Replaying 38 actions");
@@ -1315,9 +1275,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_RX_SUCCESS, 0, base_slot + 2475, 0, 33, NULL, 0);
 
         LOG_INF("Node 76: Completed 38 actions");
-    }
- else 
-    if (node_id == 3504391685) {
+    } else if (node_id == 3504391685) {
         /* Physical Node 77 → Simulates Logical Node 119 */
         /* Actions: 1x RX_ERROR, 7x RX_SUCCESS, 5x RX_TIMEOUT, 27x TX_DONE */
         LOG_INF("Node 77 (logical 119): Replaying 40 actions");
@@ -1390,8 +1348,7 @@ static void showcase_epoch_1017_realworld(void) {
         sam_log_action(SAM_LOG_TX_DONE, 0, base_slot + 6534, 0, 33, NULL, 0);
 
         LOG_INF("Node 77: Completed 40 actions");
-    }
- else {
+    } else {
         LOG_WRN("Unknown node_id: %u - no behavior configured", node_id);
         LOG_WRN("Known node IDs: see function header comment");
         return;
@@ -1411,7 +1368,7 @@ int main(void) {
     LOG_INF("================================");
 
     /* Initialize logging */
-    ret = sam_log_init();
+    ret = sam_log_init(5);
     if (ret != 0) {
         LOG_ERR("Failed to initialize SAM logging: %d", ret);
         return ret;
